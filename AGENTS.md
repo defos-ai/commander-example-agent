@@ -1,0 +1,127 @@
+# Working on the example agent
+
+## Purpose and boundaries
+
+- Keep this a small, runnable template for Commander builder-agents and AI coding
+  tools to extend. README briefly explains customize/run/connect;
+  this file holds implementation guidance. Keep one root `.gitignore` and a
+  companion `AGENTS.md` beside every README.
+- Preserve uncommitted work. Do not commit, publish, or delete demo state without
+  authorization. Do not log credentials or commit environment files.
+- Template source is MIT; Commander framework and provider dependencies remain
+  AGPL-3.0-only. Preserve third-party license notices and the README distinction
+  between the template license and dependency requirements for combined builds.
+- The module imports Commander framework and providers only. Do not import
+  Commander apps, add a controller inside the agent, or depend on a sibling
+  checkout in published `go.mod`.
+- Commander → Controller → Agent: actions propose next work; the controller
+  selects who executes it. The controller loads `missions/analyze-text.json`.
+  `starting_actions` guides the first assignment; creating an operation alone
+  does not queue that task. Valid proposals execute automatically unless a
+  matching mission rule requires a model decision.
+- Agents upload artifact bytes; the controller persists accepted metadata.
+  Broker acknowledgements are separate from result acceptance. Do not claim
+  exactly-once execution.
+
+## Customize the template
+
+When building a new agent from this repository:
+
+1. Set the module path in `go.mod` and update this module's imports.
+2. Set `AgentType` and default responsibilities in `agent.go` to describe the
+   agent's capabilities.
+3. Implement actions in `actions/` with typed JSON schemas and input validation.
+   Register a fresh constructor for each action once in `agent.go`. Keep action
+   names unique across the deployment and update follow-up proposals when renaming.
+4. Align the demo mission's required/starting actions and schemas with the new
+   capabilities. Update public action tests and the API integration scenario.
+5. Keep README short: purpose, extension points, local UI workflow and connection
+   settings. Keep implementation and test-stack details in this file.
+
+## Entry points
+
+- `agent.go` defines the stable agent type and creates a fresh catalog. Action
+  executors hold discovery state: do not share instances between agents. Keep an
+  explicitly empty action catalog empty when callers supply one.
+- `.github/workflows/push.yml` is manually triggered and derives the GHCR image
+  name from the owner and `AgentType`: `commander-<AgentType>`. Keep `AgentType`
+  declared directly in `agent.go` as a lowercase Docker-compatible string
+  literal. Publishing runs unit checks first and uses only `GITHUB_TOKEN`.
+- `actions/analyze_text.go` demonstrates `action.NewFunc` with typed JSON schemas,
+  input validation, deterministic output and a proposal. Keep size limits and
+  cancellation checks. Add an action in its own file and register it once.
+- `actions/write_summary.go` implements `action.Executor` with `Base` for a file
+  artifact. Supply bytes to the runtime; do not write artifact paths directly.
+- `cli/cli.go` generates a fresh instance ID and owns host lifetime. Shutdown
+  cancels serving and closes dependencies. `cmd/main.go` only translates errors
+  into a process exit status.
+- `cli/config.go` owns flags/environment; `cli/factory.go` selects concrete FS,
+  RabbitMQ and S3 providers. Reject unsupported schemes. Agents need a bus and
+  artifact file store, never a database.
+- `compose.yaml` is an isolated FS demonstration with one controller. All state
+  volumes belong to UID 1000. API and MCP run at PID 1 so their credential lookup
+  can read generated secrets from the live environment. Bind MCP/API/Admin ports
+  4283/4284/4285 to loopback.
+- Playground uses the published `ghcr.io/defos-ai/commander-playground` image,
+  using the same `COMMANDER_VERSION` as the other hosts (default `stable`). Keep
+  Commander app dependencies out of the agent module. It is an optional
+  interactive Compose profile connecting to the demo MCP. Never launch it with
+  `--all-in-one`, which would start separate hosts and ignore this demo's mission
+  and agent.
+- `mcp-credentials` generates a shared token in a dedicated Docker volume; MCP
+  and Playground mount it read-only and export it before exec. This Compose
+  bootstrap file is the only credential-file exception. Preserve configured
+  `MCP_TOKEN` and client `COMMANDER_MCP_TOKEN` overrides, reuse generated tokens
+  across restarts, and never log tokens. Do not mount the Docker socket or expose
+  an unauthenticated credential endpoint.
+- Commander images currently target linux/amd64; Compose requests that
+  platform explicitly so ARM hosts can use Docker emulation. The template agent
+  builds for the Docker builder's platform.
+
+## Validation
+
+Use Go 1.26.7 or newer. Changes to action behavior need public action tests;
+registration, proposals and artifacts are covered through the API integration
+test. Keep fixtures deterministic and avoid paid model calls.
+
+```sh
+go test -race -count=1 -timeout=3m ./...
+go vet ./...
+```
+
+Integration tests require a **dedicated stack**: they call test-only global
+cleanup. Never point them at a development or shared API. Keep Docker lifecycle
+outside Go tests. From a terminal with ports 4283/4284/4285 free:
+
+```sh
+export COMPOSE_PROJECT_NAME=commander-example-test ENV=tests API_USERNAME=commander
+export API_PASSWORD="$(openssl rand -hex 32)"
+docker compose up --build --wait --wait-timeout 120
+docker compose run --rm --no-deps -T playground --help
+COMMANDER_API_URL=http://127.0.0.1:4284 go test -tags=integration -race -count=1 -timeout=3m -run '^TestAgentThroughAPI$' -v ./tests/...
+docker compose down --volumes --remove-orphans
+unset API_PASSWORD API_USERNAME ENV COMPOSE_PROJECT_NAME
+```
+
+Always stop the test stack after a failure as well. The integration test waits
+for registration, submits work, checks the follow-up/artifact/report, then settles
+work and cleans operation state. CI gates the Docker job on unit checks and
+always tears down its volumes. The Playground help smoke check also exercises
+the shared-token wrapper; it needs no model key. For interactive MCP connection
+checks, select provider `other` with a fixed model name and local base URL, then
+exit after connection without sending chat. Keep failure logs free of secrets.
+
+## Develop alongside Commander
+
+The Go module pins the published `v0.1.0` release; demo images default to the
+moving `stable` tag, with `COMMANDER_VERSION` available to pin a release. Go
+dependencies use published semantic versions, not the Docker `stable` tag. For
+framework development, use an ignored `go.work` with this module plus the
+checkout's `framework`, `providers/fs`, `providers/rabbitmq` and `providers/s3`
+modules.
+Map their versioned requirements to local paths with workspace replacements.
+Do not commit that workspace or put local replacements in `go.mod`.
+
+Docker and CI use `GOWORK=off` with the published modules. Before updating module
+pins or image tags, verify module downloads, tests and the documented Compose run
+without a workspace, and retain the resulting module checksums.

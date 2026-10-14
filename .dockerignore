@@ -1,0 +1,14 @@
+.git
+.github
+.env
+.env.*
+**/.env
+**/.env.*
+go.work
+go.work.sum
+state
+bin
+coverage.out
+*.test
+*.exe
+commander-example-agent

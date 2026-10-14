@@ -1,0 +1,25 @@
+[
+  {
+    "name": "analyze-text",
+    "objective": "Analyze the supplied text and produce summary.md with its character, word and line counts. Assign analyze-text using the mission input; the controller runs its proposed write-summary action. Review the artifact, then complete the operation with a short summary.",
+    "required_actions": ["analyze-text", "write-summary"],
+    "starting_actions": ["analyze-text"],
+    "rules": {},
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "text": {"type": "string", "minLength": 1, "pattern": "\\S"}
+      },
+      "required": ["text"],
+      "additionalProperties": false
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "summary": {"type": "string", "minLength": 1}
+      },
+      "required": ["summary"],
+      "additionalProperties": false
+    }
+  }
+]
