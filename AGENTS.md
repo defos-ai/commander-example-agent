@@ -80,6 +80,12 @@ When building a new agent from this repository:
 
 ## Validation
 
+Keep tests and fixtures in `tests/`, using external test packages to exercise
+public action and host APIs. Use existing dependency injection for local
+fixtures. Do not place tests in `actions/` or `cli/` merely to access private
+helpers, or export implementation details and add runtime settings solely
+for tests.
+
 Use Go 1.26.7 or newer. Changes to action behavior need public action tests;
 registration, proposals and artifacts are covered through the API integration
 test. Keep fixtures deterministic and avoid paid model calls.
