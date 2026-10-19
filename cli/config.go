@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -27,8 +26,10 @@ type config struct {
 
 func parseConfig(args []string, stderr io.Writer) (config, error) {
 	var result config
+	var agentIDSuffix string
 	flags := flag.NewFlagSet(serviceName, flag.ContinueOnError)
 	flags.SetOutput(stderr)
+	flags.StringVar(&agentIDSuffix, "agent-id-suffix", "", "8 lowercase hex characters; overrides COMMANDER_AGENT_ID_SUFFIX; empty generates a fresh ID")
 	flags.StringVar(&result.busURL, "bus-url", "", "Bus URL or path; overrides BUS_URL; default ./state/bus")
 	flags.StringVar(&result.storageURL, "storage-url", "", "Artifact storage URL or path; overrides STORAGE_URL; default ./state/storage")
 	flags.StringVar(&result.logLevel, "log-level", "info", "debug, info, warn or error; overrides LOG_LEVEL")
@@ -36,7 +37,7 @@ func parseConfig(args []string, stderr io.Writer) (config, error) {
 	flags.DurationVar(&result.heartbeatInterval, "heartbeat-interval", agents.DefaultHeartbeatInterval, "Agent registration heartbeat interval")
 	flags.Usage = func() {
 		fmt.Fprintf(stderr, "Usage: %s [flags]\n", serviceName)
-		fmt.Fprintln(stderr, "Connect to the controller's bus and artifact storage. COMMANDER_AGENT_ID_SUFFIX supplies 8 lowercase hex characters; otherwise a fresh ID is generated.")
+		fmt.Fprintln(stderr, "Connect to the controller's bus and artifact storage. A fresh agent ID is created unless an agent ID suffix is supplied.")
 		flags.PrintDefaults()
 	}
 	if err := flags.Parse(args); err != nil {
@@ -51,11 +52,12 @@ func parseConfig(args []string, stderr io.Writer) (config, error) {
 	result.storageURL = host.Value(result.storageURL, provided["storage-url"], "STORAGE_URL", filepath.Join("state", "storage"))
 	result.logLevel = host.Value(result.logLevel, provided["log-level"], "LOG_LEVEL", "info")
 	result.logFormat = host.Value(result.logFormat, provided["log-format"], "LOG_FORMAT", "json")
-	if suffix := os.Getenv("COMMANDER_AGENT_ID_SUFFIX"); suffix != "" {
+	suffix := host.Value(agentIDSuffix, provided["agent-id-suffix"], "COMMANDER_AGENT_ID_SUFFIX", "")
+	if suffix != "" {
 		idType := strings.TrimSuffix(string(exampleagent.AgentType), "-agent")
 		result.agentID = idType + "-agent-" + suffix
 		if kind, ok := id.RuntimeType(result.agentID, id.Agent); len(suffix) != 8 || !ok || kind != idType {
-			return config{}, errors.New("COMMANDER_AGENT_ID_SUFFIX must be exactly 8 lowercase hex characters")
+			return config{}, errors.New("agent-id-suffix / COMMANDER_AGENT_ID_SUFFIX must be exactly 8 lowercase hex characters")
 		}
 	}
 	if result.busURL == "" || result.storageURL == "" {

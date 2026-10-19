@@ -35,8 +35,10 @@ Run **Actions → Make release** on the default branch with a version such as
 
 Names come from `AgentType` in `agent.go`. Set the GHCR package visibility to
 public if others should pull it without signing in. Use a new version for each
-release; retry failed jobs in the same run. Commander spawner support will use
-this package manifest to select the right executable or image.
+release; existing Docker version tags are never overwritten. Retry failed jobs
+in the same run. Complete releases promote Docker `stable` and GitHub `Latest`
+when they are the newest version. Commander spawner uses the package manifest
+to select the right executable or image.
 
 ## Try it locally
 
@@ -89,10 +91,10 @@ BUS_URL=/shared/bus STORAGE_URL=/shared/storage go run ./cmd
 FS paths must point to the same shared directories as the controller.
 Run `go run ./cmd --help` for flags.
 
-A spawner can set `COMMANDER_AGENT_ID_SUFFIX` to eight lowercase hex characters
-(for example, `0123abcd`). The agent adds its own type: `example-agent-0123abcd`.
-Leave it unset for a fresh ID on each start. Never give two running instances of
-the same type the same suffix.
+`--agent-id-suffix=0123abcd` overrides `COMMANDER_AGENT_ID_SUFFIX`. The agent
+adds its own type: `example-agent-0123abcd`. Use eight lowercase hex characters.
+Omit both settings or pass `--agent-id-suffix=` for a fresh ID.
+Never give two running instances of the same type the same suffix.
 
 Template source: [MIT](LICENSE). Commander framework and provider dependencies
 remain AGPL-3.0-only. Their license requirements apply to combined builds.

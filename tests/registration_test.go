@@ -21,11 +21,14 @@ import (
 
 func TestCLIAgentIDSuffixRegistration(t *testing.T) {
 	for _, test := range []struct {
-		name, suffix string
+		name, suffix, expected string
+		args                   []string
 	}{
 		{name: "manual"},
 		{name: "empty"},
-		{name: "preassigned", suffix: "0123abcd"},
+		{name: "environment", suffix: "0123abcd", expected: "0123abcd"},
+		{name: "flag overrides environment", suffix: "invalid", args: []string{"--agent-id-suffix=89abcdef"}, expected: "89abcdef"},
+		{name: "empty flag overrides environment", suffix: "0123abcd", args: []string{"--agent-id-suffix="}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Setenv("COMMANDER_AGENT_ID_SUFFIX", test.suffix)
@@ -61,9 +64,10 @@ func TestCLIAgentIDSuffixRegistration(t *testing.T) {
 				"--storage-url=" + filepath.Join(root, "storage"),
 				"--log-level=error", "--log-format=json",
 			}
+			args = append(args, test.args...)
 			first := observeCLIRegistration(t, args, subscription)
 			snapshots := []agent.AgentSnapshot{first}
-			if test.suffix == "" {
+			if test.expected == "" {
 				second := observeCLIRegistration(t, args, subscription)
 				if first.ID == second.ID {
 					t.Fatal("manual restart reused the previous process's agent ID")
@@ -81,7 +85,7 @@ func TestCLIAgentIDSuffixRegistration(t *testing.T) {
 				if len(config) != 0 {
 					t.Fatalf("unexpected public configuration: %s", snapshot.Config)
 				}
-				if want := "example-agent-" + test.suffix; test.suffix != "" && snapshot.ID != want {
+				if want := "example-agent-" + test.expected; test.expected != "" && snapshot.ID != want {
 					t.Fatalf("registered ID = %q, want preassigned %q", snapshot.ID, want)
 				}
 			}
@@ -103,7 +107,7 @@ func TestCLIRejectsInvalidAgentIDSuffixBeforeOpeningProviders(t *testing.T) {
 				"--bus-url=" + filepath.Join(root, "bus"),
 				"--storage-url=" + filepath.Join(root, "storage"),
 			}, nil)
-			if err == nil || !strings.Contains(err.Error(), "COMMANDER_AGENT_ID_SUFFIX must be exactly 8 lowercase hex characters") {
+			if err == nil || !strings.Contains(err.Error(), "must be exactly 8 lowercase hex characters") {
 				t.Fatalf("expected invalid agent ID suffix error, got %v", err)
 			}
 			entries, err := os.ReadDir(root)

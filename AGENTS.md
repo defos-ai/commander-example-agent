@@ -58,7 +58,8 @@ When building a new agent from this repository:
 - `cli/cli.go` selects the instance ID and owns host lifetime. Shutdown
   cancels serving and closes dependencies. `cmd/main.go` only translates errors
   into a process exit status.
-- Optional `COMMANDER_AGENT_ID_SUFFIX` accepts exactly eight lowercase hex
+- `--agent-id-suffix` overrides `COMMANDER_AGENT_ID_SUFFIX`, including an
+  explicitly empty flag. Nonempty values accept exactly eight lowercase hex
   characters; unset/empty generates a fresh ID. Compose `AgentConfig.ID` from
   the fixed `AgentType` and this suffix, and validate it with `id.RuntimeType`
   before opening providers. Never accept an externally supplied type prefix.
@@ -74,7 +75,9 @@ When building a new agent from this repository:
 - `compose.yaml` is an isolated FS demonstration with one controller. All state
   volumes belong to UID 1000. API and MCP run at PID 1 so their credential lookup
   can read generated secrets from the live environment. Bind MCP/API/Admin ports
-  4283/4284/4285 to loopback.
+  4283/4284/4285 to loopback. The demo fixes API `ENV` to `development`;
+  `.github/composes/compose.test.yaml` enables test-only API cleanup in a dedicated
+  stack. Keep fixtures and test-only services in that override, not the demo.
 - Playground uses the published `ghcr.io/defos-ai/commander-playground` image,
   using the same `COMMANDER_VERSION` as the other hosts (default `stable`). Keep
   Commander app dependencies out of the agent module. It is an optional
@@ -101,10 +104,12 @@ When building a new agent from this repository:
 - Publishing uses `GITHUB_TOKEN`. The image is first pushed under a run-specific
   build tag. The parent generates the digest-pinned manifest, attaches binaries,
   manifest and LICENSE to a draft, then assigns the version image tag and
-  publishes the release. It does not promote `stable` or GitHub `Latest`.
+  publishes the release. Only after complete publication, `push-stable.yml`
+  promotes Docker `stable` and GitHub `Latest`, rejecting backward version moves.
 - Serialize releases and keep test concurrency separate from release concurrency.
-  Existing Git tags must match the tested SHA. Never overwrite published versions
-  or assets: retries reuse identical draft assets and reject differing bytes.
+  Existing Git tags must match the tested SHA. Before reserving a release, reject
+  an existing Docker version tag. Never overwrite published versions or assets:
+  retries reuse identical draft assets and reject differing bytes.
   Retry failed jobs in the same run so binaries and image digest stay together.
 
 ## Validation
@@ -129,13 +134,13 @@ cleanup. Never point them at a development or shared API. Keep Docker lifecycle
 outside Go tests. From a terminal with ports 4283/4284/4285 free:
 
 ```sh
-export COMPOSE_PROJECT_NAME=commander-example-test ENV=tests API_USERNAME=commander
+export COMPOSE_PROJECT_NAME=commander-example-test API_USERNAME=commander
 export API_PASSWORD="$(openssl rand -hex 32)"
-docker compose up --build --wait --wait-timeout 120
-docker compose run --rm --no-deps -T playground --help
+docker compose -f compose.yaml -f .github/composes/compose.test.yaml up --build --wait --wait-timeout 120
+docker compose -f compose.yaml -f .github/composes/compose.test.yaml run --rm --no-deps -T playground --help
 COMMANDER_API_URL=http://127.0.0.1:4284 go test -tags=integration -race -count=1 -timeout=3m -run '^TestAgentThroughAPI$' -v ./tests/...
-docker compose down --volumes --remove-orphans
-unset API_PASSWORD API_USERNAME ENV COMPOSE_PROJECT_NAME
+docker compose -f compose.yaml -f .github/composes/compose.test.yaml down --volumes --remove-orphans
+unset API_PASSWORD API_USERNAME COMPOSE_PROJECT_NAME
 ```
 
 Always stop the test stack after a failure as well. The integration test waits

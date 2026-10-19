@@ -149,7 +149,7 @@ services:
     environment:
       <<: *environment
       DATABASE_URL: file:///state/database
-      ENV: ${ENV:-development}
+      ENV: development
       API_USERNAME: commander
       API_PASSWORD: ${API_PASSWORD:-}
       API_RUNTIME: docker-compose

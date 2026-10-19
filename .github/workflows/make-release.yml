@@ -124,5 +124,28 @@ jobs:
       - name: Publish the version
         run: |
           test "$(gh release view "$VERSION" --json isDraft --jq '.isDraft')" = true
-          docker buildx imagetools create --tag "$IMAGE:$VERSION" "$IMAGE@$DIGEST"
+          if result=$(docker buildx imagetools inspect "$IMAGE:$VERSION" --format '{{json .Manifest}}' 2>&1); then
+            test "$(jq -r '.digest' <<< "$result")" = "$DIGEST" || {
+              echo 'This image version has different content; refusing to overwrite it.' >&2
+              exit 1
+            }
+          elif [[ "$result" == *"$IMAGE:$VERSION: not found"* || "$result" == *"manifest unknown"* || "$result" == *"MANIFEST_UNKNOWN"* ]]; then
+            docker buildx imagetools create --prefer-index=false --tag "$IMAGE:$VERSION" "$IMAGE@$DIGEST"
+          else
+            echo "$result" >&2
+            exit 1
+          fi
+          actual=$(docker buildx imagetools inspect "$IMAGE:$VERSION" --format '{{json .Manifest}}' | jq -r '.digest')
+          test "$actual" = "$DIGEST"
           gh release edit "$VERSION" --draft=false --latest=false
+
+  stable:
+    needs: [prepare, image, publish]
+    uses: ./.github/workflows/push-stable.yml
+    permissions:
+      contents: write
+      packages: write
+    with:
+      version: ${{ inputs.version }}
+      image: ${{ fromJSON(needs.prepare.outputs.metadata).image }}
+      digest: ${{ needs.image.outputs.digest }}

@@ -39,7 +39,6 @@ jobs:
     timeout-minutes: 30
     env:
       COMPOSE_PROJECT_NAME: commander-example-test
-      ENV: tests
       COMMANDER_API_URL: http://127.0.0.1:4284
       API_USERNAME: commander
       GOWORK: "off"
@@ -67,16 +66,16 @@ jobs:
           echo "::add-mask::$password"
           echo "API_PASSWORD=$password" >> "$GITHUB_ENV"
       - name: Start test stack
-        run: docker compose up --no-build --wait --wait-timeout 120
+        run: docker compose -f compose.yaml -f .github/composes/compose.test.yaml up --no-build --wait --wait-timeout 120
       - name: Check Playground startup
-        run: docker compose run --rm --no-deps -T playground --help
+        run: docker compose -f compose.yaml -f .github/composes/compose.test.yaml run --rm --no-deps -T playground --help
       - name: Test operation and artifact
         run: |
           go mod download
           go test -tags=integration -race -count=1 -timeout=3m -run '^TestAgentThroughAPI$' -v ./tests/...
       - name: Show service logs on failure
         if: failure()
-        run: docker compose logs --no-color --tail=100
+        run: docker compose -f compose.yaml -f .github/composes/compose.test.yaml logs --no-color --tail=100
       - name: Clean up
         if: always()
-        run: docker compose down --volumes --remove-orphans
+        run: docker compose -f compose.yaml -f .github/composes/compose.test.yaml down --volumes --remove-orphans
