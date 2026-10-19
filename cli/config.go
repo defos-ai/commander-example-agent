@@ -36,7 +36,7 @@ func parseConfig(args []string, stderr io.Writer) (config, error) {
 	flags.DurationVar(&result.heartbeatInterval, "heartbeat-interval", agents.DefaultHeartbeatInterval, "Agent registration heartbeat interval")
 	flags.Usage = func() {
 		fmt.Fprintf(stderr, "Usage: %s [flags]\n", serviceName)
-		fmt.Fprintln(stderr, "Connect to the controller's bus and artifact storage. COMMANDER_AGENT_ID supplies a preassigned ID; otherwise a fresh ID is generated.")
+		fmt.Fprintln(stderr, "Connect to the controller's bus and artifact storage. COMMANDER_AGENT_ID_SUFFIX supplies 8 lowercase hex characters; otherwise a fresh ID is generated.")
 		flags.PrintDefaults()
 	}
 	if err := flags.Parse(args); err != nil {
@@ -51,11 +51,11 @@ func parseConfig(args []string, stderr io.Writer) (config, error) {
 	result.storageURL = host.Value(result.storageURL, provided["storage-url"], "STORAGE_URL", filepath.Join("state", "storage"))
 	result.logLevel = host.Value(result.logLevel, provided["log-level"], "LOG_LEVEL", "info")
 	result.logFormat = host.Value(result.logFormat, provided["log-format"], "LOG_FORMAT", "json")
-	result.agentID = os.Getenv("COMMANDER_AGENT_ID")
-	if result.agentID != "" {
+	if suffix := os.Getenv("COMMANDER_AGENT_ID_SUFFIX"); suffix != "" {
 		idType := strings.TrimSuffix(string(exampleagent.AgentType), "-agent")
-		if kind, ok := id.RuntimeType(result.agentID, id.Agent); !ok || kind != idType {
-			return config{}, fmt.Errorf("COMMANDER_AGENT_ID must match %s-agent-<8 lowercase hex characters>", idType)
+		result.agentID = idType + "-agent-" + suffix
+		if kind, ok := id.RuntimeType(result.agentID, id.Agent); len(suffix) != 8 || !ok || kind != idType {
+			return config{}, errors.New("COMMANDER_AGENT_ID_SUFFIX must be exactly 8 lowercase hex characters")
 		}
 	}
 	if result.busURL == "" || result.storageURL == "" {

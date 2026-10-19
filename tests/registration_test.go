@@ -19,18 +19,18 @@ import (
 	fscomms "github.com/defos-ai/commander/providers/fs/comms"
 )
 
-func TestCLIAgentIDRegistration(t *testing.T) {
+func TestCLIAgentIDSuffixRegistration(t *testing.T) {
 	for _, test := range []struct {
-		name, agentID string
+		name, suffix string
 	}{
 		{name: "manual"},
 		{name: "empty"},
-		{name: "preassigned", agentID: "example-agent-0123abcd"},
+		{name: "preassigned", suffix: "0123abcd"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			t.Setenv("COMMANDER_AGENT_ID", test.agentID)
+			t.Setenv("COMMANDER_AGENT_ID_SUFFIX", test.suffix)
 			if test.name == "manual" {
-				if err := os.Unsetenv("COMMANDER_AGENT_ID"); err != nil {
+				if err := os.Unsetenv("COMMANDER_AGENT_ID_SUFFIX"); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -63,7 +63,7 @@ func TestCLIAgentIDRegistration(t *testing.T) {
 			}
 			first := observeCLIRegistration(t, args, subscription)
 			snapshots := []agent.AgentSnapshot{first}
-			if test.agentID == "" {
+			if test.suffix == "" {
 				second := observeCLIRegistration(t, args, subscription)
 				if first.ID == second.ID {
 					t.Fatal("manual restart reused the previous process's agent ID")
@@ -81,22 +81,21 @@ func TestCLIAgentIDRegistration(t *testing.T) {
 				if len(config) != 0 {
 					t.Fatalf("unexpected public configuration: %s", snapshot.Config)
 				}
-				if test.agentID != "" && snapshot.ID != test.agentID {
-					t.Fatalf("registered ID = %q, want preassigned %q", snapshot.ID, test.agentID)
+				if want := "example-agent-" + test.suffix; test.suffix != "" && snapshot.ID != want {
+					t.Fatalf("registered ID = %q, want preassigned %q", snapshot.ID, want)
 				}
 			}
 		})
 	}
 }
 
-func TestCLIRejectsInvalidAgentIDBeforeOpeningProviders(t *testing.T) {
-	for _, agentID := range []string{
-		" ", "example-agent-0123ABCD", "example-agent-123", "other-agent-0123abcd",
-		"../example-agent-0123abcd", "example-agent-0123abcd\n",
-		"example-controller-0123abcd", strings.Repeat("a", 64) + "-agent-0123abcd",
+func TestCLIRejectsInvalidAgentIDSuffixBeforeOpeningProviders(t *testing.T) {
+	for _, suffix := range []string{
+		" ", "0123ABCD", "123", "0123abc", "0123abcde", "0123abcg",
+		"example-agent-0123abcd", "other-agent-0123abcd", "../0123abcd", "0123abcd\n",
 	} {
-		t.Run(agentID, func(t *testing.T) {
-			t.Setenv("COMMANDER_AGENT_ID", agentID)
+		t.Run(suffix, func(t *testing.T) {
+			t.Setenv("COMMANDER_AGENT_ID_SUFFIX", suffix)
 			root := t.TempDir()
 			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 			defer cancel()
@@ -104,12 +103,12 @@ func TestCLIRejectsInvalidAgentIDBeforeOpeningProviders(t *testing.T) {
 				"--bus-url=" + filepath.Join(root, "bus"),
 				"--storage-url=" + filepath.Join(root, "storage"),
 			}, nil)
-			if err == nil || !strings.Contains(err.Error(), "COMMANDER_AGENT_ID must match") {
-				t.Fatalf("expected invalid agent ID error, got %v", err)
+			if err == nil || !strings.Contains(err.Error(), "COMMANDER_AGENT_ID_SUFFIX must be exactly 8 lowercase hex characters") {
+				t.Fatalf("expected invalid agent ID suffix error, got %v", err)
 			}
 			entries, err := os.ReadDir(root)
 			if err != nil || len(entries) != 0 {
-				t.Fatalf("invalid ID opened providers: entries=%v, err=%v", entries, err)
+				t.Fatalf("invalid suffix opened providers: entries=%v, err=%v", entries, err)
 			}
 		})
 	}

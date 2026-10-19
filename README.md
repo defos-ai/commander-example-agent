@@ -89,9 +89,10 @@ BUS_URL=/shared/bus STORAGE_URL=/shared/storage go run ./cmd
 FS paths must point to the same shared directories as the controller.
 Run `go run ./cmd --help` for flags.
 
-A spawner can set `COMMANDER_AGENT_ID` to preassign the agent's ID (for example,
-`example-agent-0123abcd`). Leave it unset for a fresh ID on each start. Never
-give two running instances the same ID.
+A spawner can set `COMMANDER_AGENT_ID_SUFFIX` to eight lowercase hex characters
+(for example, `0123abcd`). The agent adds its own type: `example-agent-0123abcd`.
+Leave it unset for a fresh ID on each start. Never give two running instances of
+the same type the same suffix.
 
 Template source: [MIT](LICENSE). Commander framework and provider dependencies
 remain AGPL-3.0-only. Their license requirements apply to combined builds.

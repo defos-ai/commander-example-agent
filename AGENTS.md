@@ -58,10 +58,12 @@ When building a new agent from this repository:
 - `cli/cli.go` selects the instance ID and owns host lifetime. Shutdown
   cancels serving and closes dependencies. `cmd/main.go` only translates errors
   into a process exit status.
-- Optional `COMMANDER_AGENT_ID` sets `AgentConfig.ID` directly; unset/empty
-  generates a fresh ID. Validate configured IDs with `id.RuntimeType` against
-  `AgentType` before opening providers. Keep the ID out of `PublicConfig`.
-  The spawner must save the ID before launch and reconcile retries against its
+- Optional `COMMANDER_AGENT_ID_SUFFIX` accepts exactly eight lowercase hex
+  characters; unset/empty generates a fresh ID. Compose `AgentConfig.ID` from
+  the fixed `AgentType` and this suffix, and validate it with `id.RuntimeType`
+  before opening providers. Never accept an externally supplied type prefix.
+  Keep the ID out of `PublicConfig`.
+  The spawner must save the full ID before launch and reconcile retries against its
   owned instance; new or replacement launches get fresh IDs. Never start two
   instances with the same ID. This setting alone provides neither duplicate
   prevention nor authentication. Registration alone
