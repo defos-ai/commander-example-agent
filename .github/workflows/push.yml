@@ -1,89 +1,83 @@
 name: Push agent image
 
 on:
-  workflow_dispatch:
+  workflow_call:
     inputs:
-      tag:
-        description: Docker image tag
+      version:
         type: string
         required: true
-        default: stable
+    outputs:
+      digest:
+        value: ${{ jobs.push.outputs.digest }}
 
 permissions:
-  contents: read
+  contents: write
   packages: write
-
-concurrency:
-  group: push-agent-image-${{ github.repository }}
-  cancel-in-progress: false
 
 jobs:
   push:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      digest: ${{ steps.image.outputs.digest }}
     env:
-      GOWORK: "off"
+      VERSION: ${{ inputs.version }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      GH_REPO: ${{ github.repository }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GOWORK: 'off'
+      GOTOOLCHAIN: local
     steps:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
+          fetch-depth: 0
           persist-credentials: false
-      - name: Read image name from AgentType
-        id: image
-        env:
-          IMAGE_TAG: ${{ inputs.tag }}
-        run: |
-          python3 - <<'PY'
-          import os
-          import re
-          from pathlib import Path
-
-          declarations = re.findall(
-              r'(?m)^[ \t]*const[ \t]+AgentType(?:[ \t]+[\w.]+)?[ \t]*=[ \t]*"([^"\r\n]*)"[ \t]*(?://[^\r\n]*)?$',
-              Path("agent.go").read_text(),
-          )
-          if len(declarations) != 1:
-              raise SystemExit("agent.go must declare AgentType once as a string literal")
-          agent_type = declarations[0]
-          if not re.fullmatch(r"[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*", agent_type):
-              raise SystemExit("AgentType must be a valid lowercase Docker image name")
-          tag = os.environ["IMAGE_TAG"]
-          if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}", tag):
-              raise SystemExit("Invalid Docker image tag")
-          owner = os.environ["GITHUB_REPOSITORY_OWNER"].lower()
-          image = f"ghcr.io/{owner}/commander-{agent_type}"
-          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
-              output.write(f"name={image}\ntag={tag}\n")
-          print(f"Publishing {image}:{tag}")
-          PY
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - name: Test and vet
+      - name: Validate package and reserve the release
+        id: package
+        shell: bash
         run: |
-          go mod download
-          go test -race -count=1 -timeout=3m ./...
-          go vet ./...
+          test "$GITHUB_REF" = "refs/heads/$DEFAULT_BRANCH"
+          metadata=$(go run ./.github/scripts/release.go metadata --version "$VERSION" --repository "$GH_REPO")
+          echo "metadata=$metadata" >> "$GITHUB_OUTPUT"
+          releases=$(gh api --paginate "repos/$GH_REPO/releases?per_page=100" --jq '.[]')
+          draft=$(jq -sr --arg version "$VERSION" 'map(select(.tag_name == $version)) | if length == 0 then "missing" else .[0].draft end' <<< "$releases")
+          case "$draft" in
+            missing|true) ;;
+            *) echo 'This version is already published; choose a new version.' >&2; exit 1 ;;
+          esac
+          if git show-ref --verify --quiet "refs/tags/$VERSION"; then
+            test "$(git rev-parse "refs/tags/$VERSION^{commit}")" = "$GITHUB_SHA"
+          else
+            gh api --method POST "repos/$GH_REPO/git/refs" -f "ref=refs/tags/$VERSION" -f "sha=$GITHUB_SHA" > /dev/null
+          fi
+          if [[ "$draft" == missing ]]; then
+            gh release create "$VERSION" --verify-tag --target "$GITHUB_SHA" --draft --title "$VERSION" --generate-notes
+          fi
+      - uses: docker/setup-qemu-action@v4
+        with:
+          platforms: arm64
       - uses: docker/setup-buildx-action@v4
-      - name: Log in to GHCR
-        uses: docker/login-action@v4
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and push agent image
+      - name: Push tested image
+        id: image
         uses: docker/build-push-action@v7
         with:
           context: .
           file: docker/Dockerfile
           push: true
-          platforms: linux/amd64
-          tags: |
-            ${{ steps.image.outputs.name }}:${{ steps.image.outputs.tag }}
-            ${{ steps.image.outputs.name }}:sha-${{ github.sha }}
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ fromJSON(steps.package.outputs.metadata).image }}:build-${{ github.run_id }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.version=${{ steps.image.outputs.tag }}
+            org.opencontainers.image.version=${{ inputs.version }}
           cache-from: type=gha,scope=agent
           cache-to: type=gha,scope=agent,mode=max

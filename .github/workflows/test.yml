@@ -4,6 +4,7 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -19,6 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
       - uses: actions/setup-go@v7
         with:
@@ -28,8 +30,8 @@ jobs:
           GOWORK: "off"
         run: |
           go mod download
-          go test -race -count=1 -timeout=3m ./...
-          go vet ./...
+          go test -race -count=1 -timeout=3m ./... ./.github/tests
+          go vet ./... ./.github/scripts ./.github/tests
 
   integration:
     needs: unit
@@ -44,6 +46,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
       - uses: actions/setup-go@v7
         with:

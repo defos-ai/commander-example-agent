@@ -5,11 +5,15 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
+	exampleagent "github.com/defos-ai/commander-example-agent"
 	agents "github.com/defos-ai/commander/framework/agent"
 	"github.com/defos-ai/commander/framework/host"
+	"github.com/defos-ai/commander/framework/id"
 )
 
 type config struct {
@@ -17,6 +21,7 @@ type config struct {
 	storageURL        string
 	logLevel          string
 	logFormat         string
+	agentID           string
 	heartbeatInterval time.Duration
 }
 
@@ -31,7 +36,7 @@ func parseConfig(args []string, stderr io.Writer) (config, error) {
 	flags.DurationVar(&result.heartbeatInterval, "heartbeat-interval", agents.DefaultHeartbeatInterval, "Agent registration heartbeat interval")
 	flags.Usage = func() {
 		fmt.Fprintf(stderr, "Usage: %s [flags]\n", serviceName)
-		fmt.Fprintln(stderr, "Connect to the controller's bus and artifact storage. Each start creates a fresh agent ID.")
+		fmt.Fprintln(stderr, "Connect to the controller's bus and artifact storage. COMMANDER_AGENT_ID supplies a preassigned ID; otherwise a fresh ID is generated.")
 		flags.PrintDefaults()
 	}
 	if err := flags.Parse(args); err != nil {
@@ -46,6 +51,13 @@ func parseConfig(args []string, stderr io.Writer) (config, error) {
 	result.storageURL = host.Value(result.storageURL, provided["storage-url"], "STORAGE_URL", filepath.Join("state", "storage"))
 	result.logLevel = host.Value(result.logLevel, provided["log-level"], "LOG_LEVEL", "info")
 	result.logFormat = host.Value(result.logFormat, provided["log-format"], "LOG_FORMAT", "json")
+	result.agentID = os.Getenv("COMMANDER_AGENT_ID")
+	if result.agentID != "" {
+		idType := strings.TrimSuffix(string(exampleagent.AgentType), "-agent")
+		if kind, ok := id.RuntimeType(result.agentID, id.Agent); !ok || kind != idType {
+			return config{}, fmt.Errorf("COMMANDER_AGENT_ID must match %s-agent-<8 lowercase hex characters>", idType)
+		}
+	}
 	if result.busURL == "" || result.storageURL == "" {
 		return config{}, errors.New("bus-url and storage-url must not be empty")
 	}

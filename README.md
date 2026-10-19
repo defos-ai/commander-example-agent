@@ -19,14 +19,24 @@ Start with [AGENTS.md](AGENTS.md) for implementation conventions and validation.
 Validate your changes:
 
 ```sh
-go test -race -count=1 -timeout=3m ./...
-go vet ./...
+go test -race -count=1 -timeout=3m ./... ./.github/tests
+go vet ./... ./.github/scripts ./.github/tests
 ```
 
-Publish from **Actions → Push agent image → Run workflow**. The
-[workflow](.github/workflows/push.yml) reads `AgentType` from `agent.go` and pushes
-`ghcr.io/<owner>/commander-<AgentType>` with your chosen tag (default `stable`)
-and a `sha-<commit>` tag.
+## Release your agent
+
+Run **Actions → Make release** on the default branch with a version such as
+`v0.1.0`. After tests pass, the [workflow](.github/workflows/make-release.yml) publishes:
+
+- Linux, macOS and Windows binaries for amd64 and arm64.
+- `ghcr.io/<owner>/commander-<AgentType>:v0.1.0` for Linux amd64 and arm64.
+- `agent.yaml` with binary checksums and the Docker image digest, generated from
+  [agent.yaml.tmpl](agent.yaml.tmpl).
+
+Names come from `AgentType` in `agent.go`. Set the GHCR package visibility to
+public if others should pull it without signing in. Use a new version for each
+release; retry failed jobs in the same run. Commander spawner support will use
+this package manifest to select the right executable or image.
 
 ## Try it locally
 
@@ -78,6 +88,10 @@ BUS_URL=/shared/bus STORAGE_URL=/shared/storage go run ./cmd
 
 FS paths must point to the same shared directories as the controller.
 Run `go run ./cmd --help` for flags.
+
+A spawner can set `COMMANDER_AGENT_ID` to preassign the agent's ID (for example,
+`example-agent-0123abcd`). Leave it unset for a fresh ID on each start. Never
+give two running instances the same ID.
 
 Template source: [MIT](LICENSE). Commander framework and provider dependencies
 remain AGPL-3.0-only. Their license requirements apply to combined builds.

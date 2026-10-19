@@ -43,18 +43,29 @@ When building a new agent from this repository:
 - `agent.go` defines the stable agent type and creates a fresh catalog. Action
   executors hold discovery state: do not share instances between agents. Keep an
   explicitly empty action catalog empty when callers supply one.
-- `.github/workflows/push.yml` is manually triggered and derives the GHCR image
-  name from the owner and `AgentType`: `commander-<AgentType>`. Keep `AgentType`
-  declared directly in `agent.go` as a lowercase Docker-compatible string
-  literal. Publishing runs unit checks first and uses only `GITHUB_TOKEN`.
+- `.github/scripts/release.go` derives package names from the repository owner
+  and `AgentType`: `commander-<AgentType>`. Keep `AgentType` declared directly in
+  `agent.go` as a lowercase Docker-compatible string literal. The release tool
+  fills `agent.yaml.tmpl` with the version, checksums of all six native binaries
+  and the pushed Docker image digest. Never hand-maintain checksums or use a
+  moving image tag in the manifest. The manifest describes delivery assets only,
+  never host commands, privileges, networks or secrets.
 - `actions/analyze_text.go` demonstrates `action.NewFunc` with typed JSON schemas,
   input validation, deterministic output and a proposal. Keep size limits and
   cancellation checks. Add an action in its own file and register it once.
 - `actions/write_summary.go` implements `action.Executor` with `Base` for a file
   artifact. Supply bytes to the runtime; do not write artifact paths directly.
-- `cli/cli.go` generates a fresh instance ID and owns host lifetime. Shutdown
+- `cli/cli.go` selects the instance ID and owns host lifetime. Shutdown
   cancels serving and closes dependencies. `cmd/main.go` only translates errors
   into a process exit status.
+- Optional `COMMANDER_AGENT_ID` sets `AgentConfig.ID` directly; unset/empty
+  generates a fresh ID. Validate configured IDs with `id.RuntimeType` against
+  `AgentType` before opening providers. Keep the ID out of `PublicConfig`.
+  The spawner must save the ID before launch and reconcile retries against its
+  owned instance; new or replacement launches get fresh IDs. Never start two
+  instances with the same ID. This setting alone provides neither duplicate
+  prevention nor authentication. Registration alone
+  does not guarantee that its actions are ready.
 - `cli/config.go` owns flags/environment; `cli/factory.go` selects concrete FS,
   RabbitMQ and S3 providers. Reject unsupported schemes. Agents need a bus and
   artifact file store, never a database.
@@ -76,7 +87,23 @@ When building a new agent from this repository:
   an unauthenticated credential endpoint.
 - Commander images currently target linux/amd64; Compose requests that
   platform explicitly so ARM hosts can use Docker emulation. The template agent
-  builds for the Docker builder's platform.
+  builds for the Docker builder's platform; its release image supports both
+  linux/amd64 and linux/arm64.
+
+## Release workflows
+
+- `make-release.yml` accepts a stable `vMAJOR.MINOR.PATCH` on the default branch.
+  It calls `test.yml` (unit → integration), then `build-binaries.yml` (native
+  tests/build/help on all six platforms), then `push.yml`. Keep build/push
+  workflows reusable-only and checkout the triggering SHA in every job.
+- Publishing uses `GITHUB_TOKEN`. The image is first pushed under a run-specific
+  build tag. The parent generates the digest-pinned manifest, attaches binaries,
+  manifest and LICENSE to a draft, then assigns the version image tag and
+  publishes the release. It does not promote `stable` or GitHub `Latest`.
+- Serialize releases and keep test concurrency separate from release concurrency.
+  Existing Git tags must match the tested SHA. Never overwrite published versions
+  or assets: retries reuse identical draft assets and reject differing bytes.
+  Retry failed jobs in the same run so binaries and image digest stay together.
 
 ## Validation
 
@@ -91,8 +118,8 @@ registration, proposals and artifacts are covered through the API integration
 test. Keep fixtures deterministic and avoid paid model calls.
 
 ```sh
-go test -race -count=1 -timeout=3m ./...
-go vet ./...
+go test -race -count=1 -timeout=3m ./... ./.github/tests
+go vet ./... ./.github/scripts ./.github/tests
 ```
 
 Integration tests require a **dedicated stack**: they call test-only global

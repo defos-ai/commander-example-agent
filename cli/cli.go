@@ -37,9 +37,12 @@ func Run(ctx context.Context, args []string, stderr io.Writer) (result error) {
 	if err != nil {
 		return err
 	}
-	agentID, err := id.AgentID(string(exampleagent.AgentType))
-	if err != nil {
-		return err
+	agentID := configuration.agentID
+	if agentID == "" {
+		agentID, err = id.AgentID(string(exampleagent.AgentType))
+		if err != nil {
+			return err
+		}
 	}
 	logger = logger.With("service", serviceName, "agent_type", exampleagent.AgentType, "agent_id", agentID)
 	defer func() {
