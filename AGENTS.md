@@ -16,6 +16,9 @@
   checkout in published `go.mod`.
 - Commander → Controller → Agent: actions propose next work; the controller
   selects who executes it. The controller loads `missions/analyze-text.json`.
+  Mission `objectives` is a required nonempty array of nonblank strings. Keep
+  goals or instruction groups in ordered entries; all apply. Admin lists them
+  in the same style as Agent Responsibilities. Steps keep a singular `objective`.
   `starting_actions` guides the first assignment; creating an operation alone
   does not queue that task. Valid proposals execute automatically unless a
   matching mission rule requires a model decision.
@@ -184,6 +187,11 @@ checkout's `framework`, `providers/fs`, `providers/rabbitmq` and `providers/s3`
 modules.
 Map their versioned requirements to local paths with workspace replacements.
 Do not commit that workspace or put local replacements in `go.mod`.
+
+Mission files target the current Commander development schema. Published
+`v0.1.0` controller hosts do not accept `objectives`; use matching development
+host images until that schema is released. Do not add legacy aliases or change
+published module pins merely to make the fixture load.
 
 Docker and CI use `GOWORK=off` with the published modules. Before updating module
 pins or image tags, verify module downloads, tests and the documented Compose run

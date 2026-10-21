@@ -16,7 +16,8 @@ Start with [AGENTS.md](AGENTS.md) for implementation conventions and validation.
    for file artifacts. Register each action constructor in [agent.go](agent.go) and
    list it in [description.go](description.go).
 3. Update the example [mission](missions/analyze-text.json) and [tests](tests/)
-   to match your agent's capabilities.
+   to match your agent's capabilities. Mission `objectives` is an ordered array
+   of goals or instruction groups; all apply and appear separately in Admin.
 
 Validate your changes:
 
@@ -45,8 +46,9 @@ to select the right executable or image.
 
 ## Try it locally
 
-Requires Docker Compose. Builds your agent alongside Commander `stable` hosts.
-Set `COMMANDER_VERSION` to pin a release.
+Requires Docker Compose and Commander hosts with mission `objectives` support.
+Until that schema is released, use matching development builds of the Commander
+host images. The demo defaults to `stable`; `COMMANDER_VERSION` pins a release.
 
 ```sh
 docker compose up --build --wait
