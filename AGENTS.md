@@ -55,6 +55,11 @@ When building a new agent from this repository:
   cancellation checks. Add an action in its own file and register it once.
 - `actions/write_summary.go` implements `action.Executor` with `Base` for a file
   artifact. Supply bytes to the runtime; do not write artifact paths directly.
+- Keep `actions/` focused on registered action implementations, their input/output
+  types and readiness. Put substantial subprocess, Git, archive and filesystem
+  support in `internal/<purpose>/` packages grouped by responsibility. Tiny helpers
+  used by one action may stay beside that action when clearer. Keep tests and
+  fixtures in `tests/`; do not export support code solely to test it.
 - `cli/cli.go` selects the instance ID and owns host lifetime. Shutdown
   cancels serving and closes dependencies. `cmd/main.go` only translates errors
   into a process exit status.
