@@ -1,5 +1,5 @@
 name: Make release
-run-name: Release agent ${{ inputs.version }}
+run-name: Release agent ${{ inputs.version }} ${{ inputs.request_id }}
 
 on:
   workflow_dispatch:
@@ -9,6 +9,14 @@ on:
         type: string
         required: true
         default: v0.1.0
+      expected_commit:
+        description: Expected source commit (optional for manual releases)
+        type: string
+        required: false
+      request_id:
+        description: Release request ID for dispatch recovery
+        type: string
+        required: false
 
 permissions:
   contents: read
@@ -24,6 +32,13 @@ jobs:
     outputs:
       metadata: ${{ steps.package.outputs.metadata }}
     steps:
+      - name: Verify requested commit
+        env:
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+        run: |
+          if [ -n "$EXPECTED_COMMIT" ]; then
+            test "$GITHUB_SHA" = "$EXPECTED_COMMIT"
+          fi
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}

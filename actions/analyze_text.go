@@ -11,6 +11,8 @@ import (
 	actionmodel "github.com/defos-ai/commander/framework/domain/actions"
 )
 
+const AnalyzeTextDescription = "Count the characters, words and lines in text, then propose writing a Markdown summary."
+
 const (
 	AnalyzeTextName = "analyze-text"
 	MaxTextBytes    = 64 * 1024
@@ -43,7 +45,7 @@ func NewAnalyzeText() (*action.Func[AnalyzeTextInput, AnalyzeTextOutput], error)
 	return action.NewFunc(action.FuncConfig[AnalyzeTextInput, AnalyzeTextOutput]{
 		Action: actionmodel.Action{
 			Name:        AnalyzeTextName,
-			Description: "Count the characters, words and lines in text, then propose writing a Markdown summary.",
+			Description: AnalyzeTextDescription,
 		},
 		Run: func(ctx context.Context, input AnalyzeTextInput) (AnalyzeTextOutput, error) {
 			if err := ctx.Err(); err != nil {

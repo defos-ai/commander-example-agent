@@ -11,6 +11,8 @@ import (
 	"github.com/defos-ai/commander/framework/domain/artifacts"
 )
 
+const WriteSummaryDescription = "Write text-analysis counts to a summary.md artifact."
+
 const WriteSummaryName = "write-summary"
 
 type WriteSummaryInput struct {
@@ -50,7 +52,7 @@ func NewWriteSummary() (*WriteSummary, error) {
 	}
 	return &WriteSummary{action.NewBase(actionmodel.Action{
 		Name:         WriteSummaryName,
-		Description:  "Write text-analysis counts to a summary.md artifact.",
+		Description:  WriteSummaryDescription,
 		InputSchema:  inputSchema,
 		OutputSchema: outputSchema,
 	})}, nil

@@ -9,10 +9,12 @@ Start with [AGENTS.md](AGENTS.md) for implementation conventions and validation.
 ## Build your agent
 
 1. Clone this template. Set your module path in [go.mod](go.mod) and update local
-   imports. Set `AgentType` and responsibilities in [agent.go](agent.go).
+   imports. Set `AgentType` in [agent.go](agent.go), then update
+   [description.go](description.go) with responsibilities and action descriptions.
 2. Implement actions in [actions/](actions/). Follow [analyze_text.go](actions/analyze_text.go)
    for typed inputs, outputs and follow-up proposals, and [write_summary.go](actions/write_summary.go)
-   for file artifacts. Register each action constructor in [agent.go](agent.go).
+   for file artifacts. Register each action constructor in [agent.go](agent.go) and
+   list it in [description.go](description.go).
 3. Update the example [mission](missions/analyze-text.json) and [tests](tests/)
    to match your agent's capabilities.
 
@@ -30,7 +32,8 @@ Run **Actions → Make release** on the default branch with a version such as
 
 - Linux, macOS and Windows binaries for amd64 and arm64.
 - `ghcr.io/<owner>/commander-<AgentType>:v0.1.0` for Linux amd64 and arm64.
-- `agent.yaml` with binary checksums and the Docker image digest, generated from
+- `agent.yaml` with responsibilities, action descriptions, binary checksums and
+  the Docker image digest, generated from
   [agent.yaml.tmpl](agent.yaml.tmpl).
 
 Names come from `AgentType` in `agent.go`. Set the GHCR package visibility to

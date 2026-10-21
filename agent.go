@@ -14,7 +14,7 @@ const AgentType agent.AgentType = "example-agent"
 func NewAgent(config agent.AgentConfig) (*agent.Agent, error) {
 	config.Type = AgentType
 	if config.Responsibilities == nil {
-		config.Responsibilities = []string{"Analyze text and produce a Markdown summary"}
+		config.Responsibilities = Responsibilities()
 	}
 	if config.Actions == nil {
 		analyze, err := actions.NewAnalyzeText()

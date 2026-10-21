@@ -28,10 +28,11 @@
 When building a new agent from this repository:
 
 1. Set the module path in `go.mod` and update this module's imports.
-2. Set `AgentType` and default responsibilities in `agent.go` to describe the
-   agent's capabilities.
+2. Set `AgentType` in `agent.go` and default responsibilities in `description.go`
+   to describe the agent's capabilities.
 3. Implement actions in `actions/` with typed JSON schemas and input validation.
-   Register a fresh constructor for each action once in `agent.go`. Keep action
+   Register a fresh constructor for each action once in `agent.go` and add its
+   name/description to `ActionDescriptions` in `description.go`. Keep action
    names unique across the deployment and update follow-up proposals when renaming.
 4. Align the demo mission's required/starting actions and schemas with the new
    capabilities. Update public action tests and the API integration scenario.
@@ -48,8 +49,19 @@ When building a new agent from this repository:
   `agent.go` as a lowercase Docker-compatible string literal. The release tool
   fills `agent.yaml.tmpl` with the version, checksums of all six native binaries
   and the pushed Docker image digest. Never hand-maintain checksums or use a
-  moving image tag in the manifest. The manifest describes delivery assets only,
-  never host commands, privileges, networks or secrets.
+  moving image tag in the manifest. The manifest includes delivery assets and
+  static responsibilities/action descriptions, never host commands, privileges,
+  networks or secrets.
+- `description.go` exports pure `Responsibilities()` and `ActionDescriptions()`
+  functions returning fresh slices. Runtime defaults and release manifests share
+  these values; each registered action uses its corresponding description constant
+  in `actions/`. Keep descriptions in sync with registration. Metadata functions
+  must not read environment variables, construct agents/providers, run discovery,
+  or perform I/O. Descriptions advertise capabilities, never current readiness.
+- Manifest generation imports the module path read from `go.mod` through a small
+  temporary Go exporter. It collects only static names/descriptions with bounded
+  output and an environment excluding release/model tokens. Keep the four-field
+  `metadata` command stable; only `manifest` reads the exported descriptions.
 - `actions/analyze_text.go` demonstrates `action.NewFunc` with typed JSON schemas,
   input validation, deterministic output and a proposal. Keep size limits and
   cancellation checks. Add an action in its own file and register it once.
@@ -106,6 +118,12 @@ When building a new agent from this repository:
   It calls `test.yml` (unit → integration), then `build-binaries.yml` (native
   tests/build/help on all six platforms), then `push.yml`. Keep build/push
   workflows reusable-only and checkout the triggering SHA in every job.
+  Keep optional `expected_commit` and `request_id` inputs for builder dispatch.
+  The first `prepare` step rejects a nonempty expected commit that differs from
+  `GITHUB_SHA`, before checkout or dependent jobs. Every release job depends on
+  `prepare`; never add conditions or ignored errors that bypass its failure.
+  Include the request ID in `run-name` so an uncertain dispatch can be recovered
+  without starting another release. Manual version-only dispatch remains available.
 - Publishing uses `GITHUB_TOKEN`. The image is first pushed under a run-specific
   build tag. The parent generates the digest-pinned manifest, attaches binaries,
   manifest and LICENSE to a draft, then assigns the version image tag and
