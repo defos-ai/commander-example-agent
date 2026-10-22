@@ -50,11 +50,14 @@ When building a new agent from this repository:
 - `.github/scripts/release.go` derives package names from the repository owner
   and `AgentType`: `commander-<AgentType>`. Keep `AgentType` declared directly in
   `agent.go` as a lowercase Docker-compatible string literal. The release tool
-  fills `agent.yaml.tmpl` with the version, checksums of all six native binaries
-  and the pushed Docker image digest. Never hand-maintain checksums or use a
-  moving image tag in the manifest. The manifest includes delivery assets and
-  static responsibilities/action descriptions, never host commands, privileges,
-  networks or secrets.
+  calls `framework/agent/manifest.Render` with the version, checksums of all six
+  native binaries and the pushed Docker image digest. The framework owns YAML
+  rendering and validation; no local template or `--template` flag is used.
+  Retain the comment-only `agent.yaml.tmpl` marker for compatibility with the
+  released Commander v0.2.0 builder, which requires that file during package checks.
+  Never hand-maintain checksums or use a moving image tag in the manifest. It
+  includes delivery assets and static responsibilities/action descriptions, never
+  host commands, privileges, networks or secrets.
 - `description.go` exports pure `Responsibilities()` and `ActionDescriptions()`
   functions returning fresh slices. Runtime defaults and release manifests share
   these values; each registered action uses its corresponding description constant
@@ -81,8 +84,8 @@ When building a new agent from this repository:
 - `--agent-id-suffix` overrides `COMMANDER_AGENT_ID_SUFFIX`, including an
   explicitly empty flag. Nonempty values accept exactly eight lowercase hex
   characters; unset/empty generates a fresh ID. Compose `AgentConfig.ID` from
-  the fixed `AgentType` and this suffix, and validate it with `id.RuntimeType`
-  before opening providers. Never accept an externally supplied type prefix.
+  the fixed `AgentType` and this suffix with `id.AgentIDFromSuffix` before
+  opening providers. Never accept an externally supplied type prefix.
   Keep the ID out of `PublicConfig`.
   The spawner must save the full ID before launch and reconcile retries against its
   owned instance; new or replacement launches get fresh IDs. Never start two
@@ -99,7 +102,7 @@ When building a new agent from this repository:
   `.github/composes/compose.test.yaml` enables test-only API cleanup in a dedicated
   stack. Keep fixtures and test-only services in that override, not the demo.
 - Playground uses the published `ghcr.io/defos-ai/commander-playground` image,
-  using the same `COMMANDER_VERSION` as the other hosts (default `stable`). Keep
+  using the same `COMMANDER_VERSION` as the other hosts (default `v0.2.0`). Keep
   Commander app dependencies out of the agent module. It is an optional
   interactive Compose profile connecting to the demo MCP. Never launch it with
   `--all-in-one`, which would start separate hosts and ignore this demo's mission
@@ -179,20 +182,18 @@ exit after connection without sending chat. Keep failure logs free of secrets.
 
 ## Develop alongside Commander
 
-The Go module pins the published `v0.1.0` release; demo images default to the
-moving `stable` tag, with `COMMANDER_VERSION` available to pin a release. Go
-dependencies use published semantic versions, not the Docker `stable` tag. For
-framework development, use an ignored `go.work` with this module plus the
+The Go module and demo images pin the published Commander `v0.2.0` release;
+`COMMANDER_VERSION` overrides demo host images. Go dependencies use published
+semantic versions, not the Docker `stable` tag. For framework development, use an
+ignored `go.work` with this module plus the
 checkout's `framework`, `providers/fs`, `providers/rabbitmq` and `providers/s3`
 modules.
 Map their versioned requirements to local paths with workspace replacements.
 Do not commit that workspace or put local replacements in `go.mod`.
 
-Mission files target the current Commander development schema. Published
-`v0.1.0` controller hosts do not accept `objectives`; use matching development
-host images until that schema is released. Do not add legacy aliases or change
-published module pins merely to make the fixture load.
-
 Docker and CI use `GOWORK=off` with the published modules. Before updating module
 pins or image tags, verify module downloads, tests and the documented Compose run
-without a workspace, and retain the resulting module checksums.
+without a workspace, and retain the resulting module checksums. `go mod tidy`
+skips hidden `.github` directories; preserve the manifest renderer's dependencies
+with `go get github.com/defos-ai/commander/framework/agent/manifest@v0.2.0`
+after tidying, then test and vet `.github/scripts` and `.github/tests` explicitly.

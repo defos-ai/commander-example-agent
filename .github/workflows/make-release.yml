@@ -8,7 +8,7 @@ on:
         description: New version (vMAJOR.MINOR.PATCH)
         type: string
         required: true
-        default: v0.1.0
+        default: v0.2.1
       expected_commit:
         description: Expected source commit (optional for manual releases)
         type: string

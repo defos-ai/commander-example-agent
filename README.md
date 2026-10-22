@@ -29,13 +29,12 @@ go vet ./... ./.github/scripts ./.github/tests
 ## Release your agent
 
 Run **Actions → Make release** on the default branch with a version such as
-`v0.1.0`. After tests pass, the [workflow](.github/workflows/make-release.yml) publishes:
+`v0.2.1`. After tests pass, the [workflow](.github/workflows/make-release.yml) publishes:
 
 - Linux, macOS and Windows binaries for amd64 and arm64.
-- `ghcr.io/<owner>/commander-<AgentType>:v0.1.0` for Linux amd64 and arm64.
+- `ghcr.io/<owner>/commander-<AgentType>:v0.2.1` for Linux amd64 and arm64.
 - `agent.yaml` with responsibilities, action descriptions, binary checksums and
-  the Docker image digest, generated from
-  [agent.yaml.tmpl](agent.yaml.tmpl).
+  the Docker image digest.
 
 Names come from `AgentType` in `agent.go`. Set the GHCR package visibility to
 public if others should pull it without signing in. Use a new version for each
@@ -46,9 +45,8 @@ to select the right executable or image.
 
 ## Try it locally
 
-Requires Docker Compose and Commander hosts with mission `objectives` support.
-Until that schema is released, use matching development builds of the Commander
-host images. The demo defaults to `stable`; `COMMANDER_VERSION` pins a release.
+Requires Docker Compose. The demo uses Commander `v0.2.0`; set
+`COMMANDER_VERSION` to try another release.
 
 ```sh
 docker compose up --build --wait

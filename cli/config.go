@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
-	"strings"
 	"time"
 
 	exampleagent "github.com/defos-ai/commander-example-agent"
@@ -54,10 +53,10 @@ func parseConfig(args []string, stderr io.Writer) (config, error) {
 	result.logFormat = host.Value(result.logFormat, provided["log-format"], "LOG_FORMAT", "json")
 	suffix := host.Value(agentIDSuffix, provided["agent-id-suffix"], "COMMANDER_AGENT_ID_SUFFIX", "")
 	if suffix != "" {
-		idType := strings.TrimSuffix(string(exampleagent.AgentType), "-agent")
-		result.agentID = idType + "-agent-" + suffix
-		if kind, ok := id.RuntimeType(result.agentID, id.Agent); len(suffix) != 8 || !ok || kind != idType {
-			return config{}, errors.New("agent-id-suffix / COMMANDER_AGENT_ID_SUFFIX must be exactly 8 lowercase hex characters")
+		var err error
+		result.agentID, err = id.AgentIDFromSuffix(string(exampleagent.AgentType), suffix)
+		if err != nil {
+			return config{}, fmt.Errorf("agent-id-suffix / COMMANDER_AGENT_ID_SUFFIX: %w", err)
 		}
 	}
 	if result.busURL == "" || result.storageURL == "" {
