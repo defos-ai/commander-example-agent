@@ -67,9 +67,11 @@ jobs:
           echo "API_PASSWORD=$password" >> "$GITHUB_ENV"
       - name: Start test stack
         run: docker compose -f compose.yaml -f .github/composes/compose.test.yaml up --no-build --wait --wait-timeout 120
+      - name: Import demo mission
+        run: docker compose -f compose.yaml -f .github/composes/compose.test.yaml run --rm --no-deps -T missions
       - name: Check Playground startup
         run: docker compose -f compose.yaml -f .github/composes/compose.test.yaml run --rm --no-deps -T playground --help
-      - name: Test operation and artifact
+      - name: Test Hacker News processing and artifacts
         run: |
           go mod download
           go test -tags=integration -race -count=1 -timeout=3m -run '^TestAgentThroughAPI$' -v ./tests/...

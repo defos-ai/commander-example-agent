@@ -2,7 +2,8 @@
 
 A small Go template for extending [Commander](https://github.com/defos-ai/commander)
 with new agents. It gives builder-agents and coding agents such as Codex or Claude
-a standard starting point: typed JSON actions, validation, proposals and artifacts.
+a standard starting point: typed JSON actions, validation, questions, proposals and
+artifacts. The example turns public Hacker News stories into a short reading list.
 
 Start with [AGENTS.md](AGENTS.md) for implementation conventions and validation.
 
@@ -11,11 +12,12 @@ Start with [AGENTS.md](AGENTS.md) for implementation conventions and validation.
 1. Clone this template. Set your module path in [go.mod](go.mod) and update local
    imports. Set `AgentType` in [agent.go](agent.go), then update
    [description.go](description.go) with responsibilities and action descriptions.
-2. Implement actions in [actions/](actions/). Follow [analyze_text.go](actions/analyze_text.go)
-   for typed inputs, outputs and follow-up proposals, and [write_summary.go](actions/write_summary.go)
-   for file artifacts. Register each action constructor in [agent.go](agent.go) and
-   list it in [description.go](description.go).
-3. Update the example [mission](missions/analyze-text.json) and [tests](tests/)
+2. Implement actions in [actions/](actions/). The five examples choose topics,
+   fetch stories, filter titles, rank a shortlist and write a digest. They cover
+   `action.Question`, real HTTP requests, pure data processing, follow-up proposals
+   and file artifacts. Register each constructor in [agent.go](agent.go) and list
+   it in [description.go](description.go).
+3. Update the example [mission](missions/hacker-news.json) and [tests](tests/)
    to match your agent's capabilities. Mission `objectives` is an ordered array
    of goals or instruction groups; all apply and appear separately in Admin.
 
@@ -45,19 +47,29 @@ to select the right executable or image.
 
 ## Try it locally
 
-Requires Docker Compose. The demo uses Commander `v0.2.0`; set
+Requires Docker Compose. The demo uses Commander `v0.3.0`; set
 `COMMANDER_VERSION` to try another release.
 
 ```sh
 docker compose up --build --wait
+docker compose exec -T api commander-api credentials --raw | docker compose run --rm --no-deps -T missions
 docker compose run --rm --no-deps playground
 ```
 
 Choose a model provider and enter its API key in Playground. Try:
 
-> Run analyze-text on "Commander turns plans into useful results."
+> Run hacker-news-digest using the top 10 stories.
 
-Open [Admin](http://localhost:4285) to inspect tasks and download `summary.md`.
+Answer the topic question with `all`, `Go`, `AI`, `security` or comma-separated
+keywords. The agent fetches from the [official HN API](https://github.com/HackerNews/API),
+filters story titles and selects up to five stories by score and comment count.
+The feed can be `top`, `new` or `best`, with at most 20 items inspected. Reading
+HN needs no account or API key.
+
+Open [Admin](http://localhost:4285) to inspect tasks and download `digest.md` and
+`stories.json`. The digest contains titles, links and statistics. It does not
+summarize article contents. Automated tests use saved story data and need no model
+key or live HN access.
 Add `http://localhost:4284` using the credentials shown by:
 
 ```sh

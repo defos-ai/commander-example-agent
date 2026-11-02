@@ -15,7 +15,11 @@
   Commander apps, add a controller inside the agent, or depend on a sibling
   checkout in published `go.mod`.
 - Commander → Controller → Agent: actions propose next work; the controller
-  selects who executes it. The controller loads `missions/analyze-text.json`.
+  selects who executes it. The `missions` Compose tool imports
+  `missions/hacker-news.json` through the API using the published Admin CLI.
+  Commander v0.3.0 has no controller `--with-missions` flag. Import preserves
+  existing mission names; use Admin's explicit update command to replace a saved
+  definition. Pass a generated API password over stdin without printing or saving it.
   Mission `objectives` is a required nonempty array of nonblank strings. Keep
   goals or instruction groups in ordered entries; all apply. Admin lists them
   in the same style as Agent Responsibilities. Steps keep a singular `objective`.
@@ -68,11 +72,20 @@ When building a new agent from this repository:
   temporary Go exporter. It collects only static names/descriptions with bounded
   output and an environment excluding release/model tokens. Keep the four-field
   `metadata` command stable; only `manifest` reads the exported descriptions.
-- `actions/analyze_text.go` demonstrates `action.NewFunc` with typed JSON schemas,
-  input validation, deterministic output and a proposal. Keep size limits and
-  cancellation checks. Add an action in its own file and register it once.
-- `actions/write_summary.go` implements `action.Executor` with `Base` for a file
-  artifact. Supply bytes to the runtime; do not write artifact paths directly.
+- The five `actions/*_hn_*.go` examples form a reading-list workflow: choose topics,
+  fetch, filter, rank and write. `choose-hn-topics` demonstrates `action.Question`
+  with a stable key and validated comma-separated title keywords. Empty topics
+  mean all stories. `fetch-hn-stories` reads at most 20 items from the official
+  public API with bounded HTTP requests and progress logs. HN needs no credentials;
+  do not invent an authentication requirement for this workflow.
+- `internal/hn/` owns HTTP and HN response mapping. Skip null, dead, deleted and
+  non-story items; never fetch linked articles or comment trees. Title filtering
+  matches whole words or phrases without regard to case. Ranking selects five
+  stories by descending score and comment count, with deterministic ties.
+- `write-hn-digest` implements `action.Executor` with `Base` for `digest.md` and
+  `stories.json`. Escape untrusted Markdown text and links. Empty results produce
+  a valid digest, not an error. Supply bytes to the runtime; do not write artifact
+  paths directly. Keep shared story types and validation in `actions/hn.go`.
 - Keep `actions/` focused on registered action implementations, their input/output
   types and readiness. Put substantial subprocess, Git, archive and filesystem
   support in `internal/<purpose>/` packages grouped by responsibility. Tiny helpers
@@ -102,7 +115,7 @@ When building a new agent from this repository:
   `.github/composes/compose.test.yaml` enables test-only API cleanup in a dedicated
   stack. Keep fixtures and test-only services in that override, not the demo.
 - Playground uses the published `ghcr.io/defos-ai/commander-playground` image,
-  using the same `COMMANDER_VERSION` as the other hosts (default `v0.2.0`). Keep
+  using the same `COMMANDER_VERSION` as the other hosts (default `v0.3.0`). Keep
   Commander app dependencies out of the agent module. It is an optional
   interactive Compose profile connecting to the demo MCP. Never launch it with
   `--all-in-one`, which would start separate hosts and ignore this demo's mission
@@ -166,15 +179,19 @@ outside Go tests. From a terminal with ports 4283/4284/4285 free:
 export COMPOSE_PROJECT_NAME=commander-example-test API_USERNAME=commander
 export API_PASSWORD="$(openssl rand -hex 32)"
 docker compose -f compose.yaml -f .github/composes/compose.test.yaml up --build --wait --wait-timeout 120
+docker compose -f compose.yaml -f .github/composes/compose.test.yaml run --rm --no-deps -T missions
 docker compose -f compose.yaml -f .github/composes/compose.test.yaml run --rm --no-deps -T playground --help
 COMMANDER_API_URL=http://127.0.0.1:4284 go test -tags=integration -race -count=1 -timeout=3m -run '^TestAgentThroughAPI$' -v ./tests/...
 docker compose -f compose.yaml -f .github/composes/compose.test.yaml down --volumes --remove-orphans
 unset API_PASSWORD API_USERNAME COMPOSE_PROJECT_NAME
 ```
 
-Always stop the test stack after a failure as well. The integration test waits
-for registration, submits work, checks the follow-up/artifact/report, then settles
-work and cleans operation state. CI gates the Docker job on unit checks and
+Always stop the test stack after a failure as well. Unit tests inject an HTTP client
+for saved HN responses and exercise the topic question and full action chain.
+The API integration test waits for all five actions, submits a saved story snapshot
+to `filter-hn-stories`, checks its rank/write proposals and both artifacts, then
+settles work and cleans operation state. This keeps ordinary tests deterministic
+and independent of internet access. CI gates the Docker job on unit checks and
 always tears down its volumes. The Playground help smoke check also exercises
 the shared-token wrapper; it needs no model key. For interactive MCP connection
 checks, select provider `other` with a fixed model name and local base URL, then
@@ -182,7 +199,7 @@ exit after connection without sending chat. Keep failure logs free of secrets.
 
 ## Develop alongside Commander
 
-The Go module and demo images pin the published Commander `v0.2.0` release;
+The Go module and demo images pin the published Commander `v0.3.0` release;
 `COMMANDER_VERSION` overrides demo host images. Go dependencies use published
 semantic versions, not the Docker `stable` tag. For framework development, use an
 ignored `go.work` with this module plus the
@@ -195,5 +212,5 @@ Docker and CI use `GOWORK=off` with the published modules. Before updating modul
 pins or image tags, verify module downloads, tests and the documented Compose run
 without a workspace, and retain the resulting module checksums. `go mod tidy`
 skips hidden `.github` directories; preserve the manifest renderer's dependencies
-with `go get github.com/defos-ai/commander/framework/agent/manifest@v0.2.0`
+with `go get github.com/defos-ai/commander/framework/agent/manifest@v0.3.0`
 after tidying, then test and vet `.github/scripts` and `.github/tests` explicitly.

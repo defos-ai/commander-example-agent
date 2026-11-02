@@ -7,13 +7,16 @@ import (
 
 // Responsibilities returns the default capabilities without starting an agent.
 func Responsibilities() []string {
-	return []string{"Analyze text and produce a Markdown summary"}
+	return []string{"Build a Hacker News reading list from selected topics", "Filter and rank stories, then produce Markdown and JSON digests"}
 }
 
 // ActionDescriptions returns release metadata without schemas or discovery state.
 func ActionDescriptions() []actionmodel.Action {
 	return []actionmodel.Action{
-		{Name: actions.AnalyzeTextName, Description: actions.AnalyzeTextDescription},
-		{Name: actions.WriteSummaryName, Description: actions.WriteSummaryDescription},
+		{Name: actions.ChooseHNTopicsName, Description: actions.ChooseHNTopicsDescription},
+		{Name: actions.FetchHNStoriesName, Description: actions.FetchHNStoriesDescription},
+		{Name: actions.FilterHNStoriesName, Description: actions.FilterHNStoriesDescription},
+		{Name: actions.RankHNStoriesName, Description: actions.RankHNStoriesDescription},
+		{Name: actions.WriteHNDigestName, Description: actions.WriteHNDigestDescription},
 	}
 }

@@ -13,9 +13,12 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/defos-ai/commander-example-agent/actions"
 )
 
 // Run only against a disposable Compose project with ENV=tests: cleanup removes
@@ -36,7 +39,7 @@ func TestAgentThroughAPI(t *testing.T) {
 			for _, action := range agent.Actions {
 				ready[action.Name] = action.Status == "ready"
 			}
-			if ready["analyze-text"] && ready["write-summary"] {
+			if ready["choose-hn-topics"] && ready["fetch-hn-stories"] && ready["filter-hn-stories"] && ready["rank-hn-stories"] && ready["write-hn-digest"] {
 				return true
 			}
 		}
@@ -57,14 +60,24 @@ func TestAgentThroughAPI(t *testing.T) {
 			t.Errorf("clean up example operation: %v", err)
 		}
 	})
-	input := map[string]any{"text": "Hello Commander.\nBuild useful agents."}
+	// Start with a saved, already-fetched snapshot so this test exercises real
+	// controller proposals and artifacts without depending on live HN or a model.
+	// Public action tests cover the question and bounded HTTP fetch separately.
+	fixture, err := os.ReadFile("fixtures/hn-stories.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var input actions.HNStoryBatch
+	if err := json.Unmarshal(fixture, &input); err != nil {
+		t.Fatal(err)
+	}
 	var operation operationResponse
 	a.request(t, ctx, http.MethodPost, "/api/v1/operations", map[string]any{
-		"operation_id": id, "mission_name": "analyze-text", "input": input,
+		"operation_id": id, "mission_name": "hacker-news-digest", "input": map[string]any{"feed": "top", "limit": 10},
 	}, http.StatusCreated, &operation)
 	var root taskResponse
 	a.request(t, ctx, http.MethodPost, base+"/tasks", map[string]any{
-		"action_name": "analyze-text", "input": input,
+		"action_name": "filter-hn-stories", "input": input,
 	}, http.StatusCreated, &root)
 	await(t, ctx, func() bool {
 		a.request(t, ctx, http.MethodGet, base, nil, http.StatusOK, &operation)
@@ -73,10 +86,10 @@ func TestAgentThroughAPI(t *testing.T) {
 				t.Fatalf("%s task %s: %s", task.ActionName, task.Status, task.Error)
 			}
 		}
-		return len(operation.Tasks) == 2 && operation.Tasks[0].Status == "succeeded" && operation.Tasks[1].Status == "succeeded"
+		return len(operation.Tasks) == 3 && operation.Tasks[0].Status == "succeeded" && operation.Tasks[1].Status == "succeeded" && operation.Tasks[2].Status == "succeeded"
 	})
-	first, summary := operation.Tasks[0], operation.Tasks[1]
-	if first.ID != root.ID || first.ActionName != "analyze-text" || summary.ActionName != "write-summary" || summary.ParentTaskID != root.ID {
+	filtered, ranked, digest := operation.Tasks[0], operation.Tasks[1], operation.Tasks[2]
+	if filtered.ID != root.ID || filtered.ActionName != "filter-hn-stories" || ranked.ActionName != "rank-hn-stories" || ranked.ParentTaskID != root.ID || digest.ActionName != "write-hn-digest" || digest.ParentTaskID != ranked.ID {
 		t.Fatalf("controller did not preserve the proposed action chain: %+v", operation.Tasks)
 	}
 	for _, task := range operation.Tasks {
@@ -84,22 +97,57 @@ func TestAgentThroughAPI(t *testing.T) {
 			t.Fatalf("task was not assigned to an example agent: %+v", task)
 		}
 	}
-	if summary.Result == nil || len(summary.Result.Artifacts) != 1 || len(summary.Result.Artifacts[0].Files) != 1 {
-		t.Fatalf("write-summary produced no single downloadable artifact: %+v", summary.Result)
+	want := actions.HNStoryBatch{Feed: input.Feed, Topics: input.Topics, Stories: []actions.HNStory{}}
+	for _, storyID := range []int{105, 108, 104, 103, 102} {
+		for _, story := range input.Stories {
+			if story.ID == storyID {
+				want.Stories = append(want.Stories, story)
+			}
+		}
 	}
-	artifact := summary.Result.Artifacts[0]
-	file := artifact.Files[0]
-	path := "/api/v1/artifacts/" + artifact.ID + "/files/" + file.ID
-	content := a.request(t, ctx, http.MethodGet, path, nil, http.StatusOK, nil)
-	want := "# Text summary\n\n- Characters: 37\n- Words: 5\n- Lines: 2\n"
-	digest := sha256.Sum256(content)
-	if file.Name != "summary.md" || string(content) != want || file.SHA256 != hex.EncodeToString(digest[:]) {
-		t.Fatalf("downloaded summary differs from the analyzed text or artifact descriptor: file=%+v content=%q", file, content)
+	var rankedOutput actions.HNStoryBatch
+	if ranked.Result == nil || json.Unmarshal(ranked.Result.Output, &rankedOutput) != nil || !reflect.DeepEqual(rankedOutput, want) {
+		t.Fatal("ranking did not keep the expected five matching stories in order")
+	}
+	if digest.Result == nil || len(digest.Result.Artifacts) != 1 || len(digest.Result.Artifacts[0].Files) != 2 {
+		t.Fatalf("write-hn-digest produced no two-file downloadable artifact: %+v", digest.Result)
+	}
+	files := map[string][]byte{}
+	artifact := digest.Result.Artifacts[0]
+	for _, file := range artifact.Files {
+		content := a.request(t, ctx, http.MethodGet, "/api/v1/artifacts/"+artifact.ID+"/files/"+file.ID, nil, http.StatusOK, nil)
+		hash := sha256.Sum256(content)
+		if file.SHA256 != hex.EncodeToString(hash[:]) {
+			t.Fatalf("downloaded %s differs from its artifact descriptor", file.Name)
+		}
+		files[file.Name] = content
+	}
+	var downloaded actions.HNStoryBatch
+	if json.Unmarshal(files["stories.json"], &downloaded) != nil || !reflect.DeepEqual(downloaded, want) {
+		t.Fatal("downloaded JSON digest differs from the ranked stories")
+	}
+	markdown := string(files["digest.md"])
+	if strings.Contains(markdown, "Security keys explained") || strings.Contains(markdown, "Google browser update") || strings.Contains(markdown, "Go templates quick start") {
+		t.Fatal("digest contains an excluded topic or a story below the shortlist")
+	}
+	last := -1
+	for _, story := range want.Stories {
+		position := strings.Index(markdown, story.Title)
+		if position <= last || !strings.Contains(markdown, fmt.Sprintf("https://news.ycombinator.com/item?id=%d", story.ID)) {
+			t.Fatal("Markdown digest omitted a title/discussion link or changed ranking order")
+		}
+		last = position
+	}
+	var output struct {
+		FileNames []string `json:"file_names"`
+	}
+	if json.Unmarshal(digest.Result.Output, &output) != nil || !reflect.DeepEqual(output.FileNames, []string{"digest.md", "stories.json"}) {
+		t.Fatal("digest metadata does not name both downloadable files")
 	}
 
 	// The client reviews results and completes the operation; agents never do so.
 	a.request(t, ctx, http.MethodPost, base+"/complete", map[string]any{
-		"output": map[string]any{"summary": "Analyzed five words and saved summary.md."},
+		"output": map[string]any{"summary": "Selected five Hacker News stories and saved digest.md and stories.json."},
 	}, http.StatusOK, &operation)
 	if operation.Status != "completed" || operation.ReportID == "" {
 		t.Fatalf("operation has no completed report: %+v", operation)
@@ -123,6 +171,7 @@ type taskResponse struct {
 	Status       string `json:"status"`
 	Error        string `json:"error"`
 	Result       *struct {
+		Output    json.RawMessage `json:"output"`
 		Artifacts []struct {
 			ID    string `json:"id"`
 			Files []struct {

@@ -35,8 +35,8 @@ func TestAgentsHaveIndependentCatalogs(t *testing.T) {
 			t.Fatalf("first agent action is not ready: %+v", instance)
 		}
 	}
-	if len(second.Describe().Actions) != 2 {
-		t.Fatalf("expected two example actions, got %+v", second.Describe().Actions)
+	if len(second.Describe().Actions) != 5 {
+		t.Fatalf("expected five example actions, got %+v", second.Describe().Actions)
 	}
 	for _, instance := range second.Describe().Actions {
 		if instance.Status != action.Unknown {

@@ -17,15 +17,27 @@ func NewAgent(config agent.AgentConfig) (*agent.Agent, error) {
 		config.Responsibilities = Responsibilities()
 	}
 	if config.Actions == nil {
-		analyze, err := actions.NewAnalyzeText()
+		choose, err := actions.NewChooseHNTopics()
 		if err != nil {
-			return nil, fmt.Errorf("create analyze-text: %w", err)
+			return nil, fmt.Errorf("create choose-hn-topics: %w", err)
 		}
-		summary, err := actions.NewWriteSummary()
+		fetch, err := actions.NewFetchHNStories(nil)
 		if err != nil {
-			return nil, fmt.Errorf("create write-summary: %w", err)
+			return nil, fmt.Errorf("create fetch-hn-stories: %w", err)
 		}
-		config.Actions = []action.Executor{analyze, summary}
+		filter, err := actions.NewFilterHNStories()
+		if err != nil {
+			return nil, fmt.Errorf("create filter-hn-stories: %w", err)
+		}
+		rank, err := actions.NewRankHNStories()
+		if err != nil {
+			return nil, fmt.Errorf("create rank-hn-stories: %w", err)
+		}
+		digest, err := actions.NewWriteHNDigest()
+		if err != nil {
+			return nil, fmt.Errorf("create write-hn-digest: %w", err)
+		}
+		config.Actions = []action.Executor{choose, fetch, filter, rank, digest}
 	}
 	return agent.NewAgent(config)
 }
