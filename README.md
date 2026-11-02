@@ -31,10 +31,10 @@ go vet ./... ./.github/scripts ./.github/tests
 ## Release your agent
 
 Run **Actions → Make release** on the default branch with a version such as
-`v0.2.1`. After tests pass, the [workflow](.github/workflows/make-release.yml) publishes:
+`v0.3.0`. After tests pass, the [workflow](.github/workflows/make-release.yml) publishes:
 
 - Linux, macOS and Windows binaries for amd64 and arm64.
-- `ghcr.io/<owner>/commander-<AgentType>:v0.2.1` for Linux amd64 and arm64.
+- `ghcr.io/<owner>/commander-<AgentType>:v0.3.0` for Linux amd64 and arm64.
 - `agent.yaml` with responsibilities, action descriptions, binary checksums and
   the Docker image digest.
 
