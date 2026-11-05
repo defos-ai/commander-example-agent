@@ -31,4 +31,4 @@ see [connection guidance](cli/AGENTS.md) and [release guidance](.github/AGENTS.m
 
 ## License
 
-Template: [MIT](LICENSE). Commander dependencies: AGPL-3.0-only, including combined builds.
+Template & derived agents: [MIT](LICENSE). Commander: [AGPL-3.0-only](https://github.com/defos-ai/commander/blob/main/LICENSE).
