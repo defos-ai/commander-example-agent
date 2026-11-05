@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/defos-ai/commander/framework/agent/action"
 )
 
 type Story struct {
@@ -66,38 +68,81 @@ func Fetch(ctx context.Context, client *http.Client, feed string, limit int) ([]
 		}
 		return nil
 	}
-	var ids []int
-	if err := get(feed+"stories", &ids); err != nil {
+	snapshot := feedSnapshot{}
+	found, err := loadSnapshot(ctx, feedCheckpoint, &snapshot)
+	checkpointed := !errors.Is(err, action.ErrCheckpointsUnavailable)
+	if err != nil && checkpointed {
 		return nil, err
 	}
-	if ids == nil || len(ids) > 500 {
-		return nil, errors.New("Hacker News returned an invalid feed")
+	if !found {
+		var ids []int
+		if err := get(feed+"stories", &ids); err != nil {
+			return nil, err
+		}
+		if ids == nil || len(ids) > 500 {
+			return nil, errors.New("Hacker News returned an invalid feed")
+		}
+		if len(ids) > limit {
+			ids = ids[:limit]
+		}
+		snapshot = feedSnapshot{Feed: feed, Limit: limit, IDs: ids}
 	}
-	if len(ids) > limit {
-		ids = ids[:limit]
+	if !snapshot.valid(feed, limit) {
+		return nil, errors.New("invalid Hacker News feed snapshot")
+	}
+	if checkpointed && !found {
+		if err := saveSnapshot(ctx, feedCheckpoint, snapshot); err != nil {
+			return nil, err
+		}
 	}
 	stories := []Story{}
 	seen := make(map[int]bool)
-	for _, id := range ids {
-		if id <= 0 {
-			return nil, errors.New("Hacker News returned an invalid story ID")
-		}
+	for _, id := range snapshot.IDs {
 		if seen[id] {
 			continue
 		}
 		seen[id] = true
 		var story *Story
-		if err := get("item/"+strconv.Itoa(id), &story); err != nil {
-			return nil, err
+		name := "hn-item-" + strconv.Itoa(id) + "-v1"
+		found := false
+		if checkpointed {
+			var item itemSnapshot
+			found, err = loadSnapshot(ctx, name, &item)
+			if err != nil {
+				return nil, err
+			}
+			if found {
+				story, err = item.story(id)
+				if err != nil {
+					return nil, err
+				}
+			}
 		}
-		if story == nil || story.Deleted || story.Dead || story.Type != "story" || strings.TrimSpace(story.Title) == "" {
-			continue
+		if !found {
+			if err := get("item/"+strconv.Itoa(id), &story); err != nil {
+				return nil, err
+			}
+			if story == nil || story.Deleted || story.Dead || story.Type != "story" || strings.TrimSpace(story.Title) == "" {
+				story = nil
+			} else {
+				story.Title = html.UnescapeString(story.Title)
+				if story.ID != id || !validStory(*story) {
+					return nil, errors.New("Hacker News returned invalid story metadata")
+				}
+			}
+			if checkpointed {
+				item, err := snapshotItem(id, story)
+				if err != nil {
+					return nil, err
+				}
+				if err := saveSnapshot(ctx, name, item); err != nil {
+					return nil, err
+				}
+			}
 		}
-		if story.ID != id {
-			return nil, errors.New("Hacker News returned a mismatched story ID")
+		if story != nil {
+			stories = append(stories, *story)
 		}
-		story.Title = html.UnescapeString(story.Title)
-		stories = append(stories, *story)
 	}
 	return stories, nil
 }

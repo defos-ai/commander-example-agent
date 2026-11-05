@@ -16,7 +16,6 @@ RUN apt-get update \
     && mkdir -p /state \
     && chown 1000:1000 /state
 COPY --from=build /out/commander-example-agent /usr/local/bin/commander-example-agent
-ENV BUS_URL=file:///state/bus STORAGE_URL=file:///state/storage
 USER 1000:1000
 WORKDIR /state
 ENTRYPOINT ["/usr/local/bin/commander-example-agent"]

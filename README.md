@@ -1,54 +1,35 @@
 # Commander agent template
 
-A small Go template for extending [Commander](https://github.com/defos-ai/commander)
-with new agents. It gives builder-agents and coding agents such as Codex or Claude
-a standard starting point: typed JSON actions, validation, questions, proposals and
-artifacts. The example turns public Hacker News stories into a short reading list.
-
-Start with [AGENTS.md](AGENTS.md) for implementation conventions and validation.
+A starting point for building your own [Commander](https://github.com/defos-ai/commander)
+agent with typed actions, questions, checkpoints, proposals and artifacts.
+The included Hacker News workflow is an example you can replace.
 
 ## Build your agent
 
-1. Clone this template. Set your module path in [go.mod](go.mod) and update local
-   imports. Set `AgentType` in [agent.go](agent.go), then update
-   [description.go](description.go) with responsibilities and action descriptions.
-2. Implement actions in [actions/](actions/). The five examples choose topics,
-   fetch stories, filter titles, rank a shortlist and write a digest. They cover
-   `action.Question`, real HTTP requests, pure data processing, follow-up proposals
-   and file artifacts. Register each constructor in [agent.go](agent.go) and list
-   it in [description.go](description.go).
-3. Update the example [mission](missions/hacker-news.json) and [tests](tests/)
-   to match your agent's capabilities. Mission `objectives` is an ordered array
-   of goals or instruction groups; all apply and appear separately in Admin.
+Ask your agent:
 
-Validate your changes:
+> Clone https://github.com/defos-ai/commander-example-agent and build a Commander
+> agent for [describe your workflow]. Follow AGENTS.md, replace the example actions
+> and mission with the capabilities needed, and run the tests.
+
+1. Set your module path and imports, `AgentType` in [agent.go](agent.go), and
+   responsibilities in [description.go](description.go).
+2. Implement actions in [actions/](actions/); register fresh constructors in
+   `agent.go` and list their descriptions in `description.go`.
+3. Replace the [example mission](missions/hacker-news.json) and [tests](tests/).
+   See [commented policy examples](missions/README.md) and [implementation guidance](AGENTS.md).
+
+Validate with Go 1.26.7 or newer:
 
 ```sh
-go test -race -count=1 -timeout=3m ./... ./.github/tests
-go vet ./... ./.github/scripts ./.github/tests
+GOWORK=off go test -race -count=1 -timeout=3m ./... ./.github/tests
+GOWORK=off go vet ./... ./.github/scripts ./.github/tests
 ```
 
-## Release your agent
+## Run locally
 
-Run **Actions → Make release** on the default branch with a version such as
-`v0.3.0`. After tests pass, the [workflow](.github/workflows/make-release.yml) publishes:
-
-- Linux, macOS and Windows binaries for amd64 and arm64.
-- `ghcr.io/<owner>/commander-<AgentType>:v0.3.0` for Linux amd64 and arm64.
-- `agent.yaml` with responsibilities, action descriptions, binary checksums and
-  the Docker image digest.
-
-Names come from `AgentType` in `agent.go`. Set the GHCR package visibility to
-public if others should pull it without signing in. Use a new version for each
-release; existing Docker version tags are never overwritten. Retry failed jobs
-in the same run. Complete releases promote Docker `stable` and GitHub `Latest`
-when they are the newest version. Commander spawner uses the package manifest
-to select the right executable or image.
-
-## Try it locally
-
-Requires Docker Compose. The demo uses Commander `v0.3.0`; set
-`COMMANDER_VERSION` to try another release.
+With Docker Compose, start the shared hosts and your agent, import its mission,
+then open Playground:
 
 ```sh
 docker compose up --build --wait
@@ -56,60 +37,40 @@ docker compose exec -T api commander-api credentials --raw | docker compose run 
 docker compose run --rm --no-deps playground
 ```
 
-Choose a model provider and enter its API key in Playground. Try:
+Choose a model provider and enter its key. To try the unchanged example, ask
+“Run hacker-news-digest using the top 10 stories,” then answer its topic question.
+HN needs no credentials; the example produces Markdown and JSON from story metadata.
 
-> Run hacker-news-digest using the top 10 stories.
-
-Answer the topic question with `all`, `Go`, `AI`, `security` or comma-separated
-keywords. The agent fetches from the [official HN API](https://github.com/HackerNews/API),
-filters story titles and selects up to five stories by score and comment count.
-The feed can be `top`, `new` or `best`, with at most 20 items inspected. Reading
-HN needs no account or API key.
-
-Open [Admin](http://localhost:4285) to inspect tasks and download `digest.md` and
-`stories.json`. The digest contains titles, links and statistics. It does not
-summarize article contents. Automated tests use saved story data and need no model
-key or live HN access.
-Add `http://localhost:4284` using the credentials shown by:
-
-```sh
-docker compose exec api commander-api credentials
-```
-
+[Admin](http://localhost:4285) shows tasks and artifacts. Connect it to
+`http://localhost:4284` with credentials from
+`docker compose exec api commander-api credentials`.
 Use `/exit` to close Playground and `docker compose down` to stop the stack.
 
-## Connect to Commander
+## Connect to an existing deployment
 
-Agents run as independent processes or containers across machines. Each instance
-advertises its actions; the controller assigns tasks to available instances.
-Scale execution by running more instances of an agent type.
-
-For distributed deployments, Commander supports:
-
-| Service | Role | Setting |
-| --- | --- | --- |
-| RabbitMQ | Task and result messaging | `BUS_URL` (`amqp://` or `amqps://`) |
-| MongoDB | Shared orchestration state and artifact metadata | `DATABASE_URL` (`mongodb://` or `mongodb+srv://`) |
-| S3-compatible storage | Artifact files | `STORAGE_URL` (`s3://bucket`) |
-
-Agents use `BUS_URL` and `STORAGE_URL`; configure MongoDB on the controller, API
-and MCP hosts. Supply service credentials through your deployment's environment.
-With the agent's connection settings configured, start it with `go run ./cmd`.
-
-The local Compose demo uses shared filesystem providers. To connect an agent to
-an existing FS deployment:
+Supply `BUS_URL` and `STORAGE_URL` at runtime through environment variables or
+flags; the Docker image sets neither. Use shared filesystem paths, RabbitMQ
+(`amqp://` or `amqps://`) and S3-compatible storage (`s3://bucket`) as appropriate.
+The agent needs the controller's bus and artifact storage, without a database.
 
 ```sh
 BUS_URL=/shared/bus STORAGE_URL=/shared/storage go run ./cmd
 ```
 
-FS paths must point to the same shared directories as the controller.
-Run `go run ./cmd --help` for flags.
+Run `go run ./cmd --help` for flags. `--agent-id-suffix=0123abcd` sets the instance
+suffix; never reuse one across running instances of the same agent type.
 
-`--agent-id-suffix=0123abcd` overrides `COMMANDER_AGENT_ID_SUFFIX`. The agent
-adds its own type: `example-agent-0123abcd`. Use eight lowercase hex characters.
-Omit both settings or pass `--agent-id-suffix=` for a fresh ID.
-Never give two running instances of the same type the same suffix.
+The template pins Commander v0.4.0. Upgrade hosts and rebuilt agents together;
+review the [upgrade notes](https://github.com/defos-ai/commander/releases/tag/v0.4.0)
+for retained state and saved mission changes.
+
+## Release your agent
+
+Run **Actions → Make release** on the default branch with a new version, such as
+`v0.4.0`. After validation, it publishes binaries for six platforms, a Linux
+amd64/arm64 image and a digest-pinned `agent.yaml`. Names follow `AgentType`;
+make the GHCR package public for unauthenticated pulls. See
+[release guidance](.github/AGENTS.md) for details.
 
 Template source: [MIT](LICENSE). Commander framework and provider dependencies
-remain AGPL-3.0-only. Their license requirements apply to combined builds.
+remain AGPL-3.0-only; their requirements apply to combined builds.

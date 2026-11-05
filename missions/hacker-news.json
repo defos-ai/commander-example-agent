@@ -15,7 +15,15 @@
       "write-hn-digest"
     ],
     "starting_actions": ["choose-hn-topics"],
-    "rules": {},
+    "policies": {
+      "continuation": {
+        "aggregate_results": [],
+        "model_review": []
+      },
+      "completion": {"decision_by": "model"},
+      "session": [],
+      "sharing": []
+    },
     "input_schema": {
       "type": "object",
       "properties": {

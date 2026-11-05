@@ -10,7 +10,7 @@ import (
 )
 
 const FetchHNStoriesName = "fetch-hn-stories"
-const FetchHNStoriesDescription = "Fetch up to 20 story records from the public Hacker News API and propose filtering their titles."
+const FetchHNStoriesDescription = "Fetch up to 20 public Hacker News stories, checkpoint the snapshot for execution retries and propose filtering their titles."
 
 // A supplied client lets embedding hosts use local fixtures without changing task inputs.
 func NewFetchHNStories(client *http.Client) (*action.Func[HNFetchInput, HNStoryBatch], error) {

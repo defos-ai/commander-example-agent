@@ -1,216 +1,107 @@
-# Working on the example agent
+# Working on the agent template
 
-## Purpose and boundaries
+Keep this a small, runnable starting point for creating new Commander agents.
+README covers customize/run/connect; implementation and validation guidance belongs
+in the scoped files below. Keep one root `.gitignore` and a companion `AGENTS.md`
+beside every README.
 
-- Keep this a small, runnable template for Commander builder-agents and AI coding
-  tools to extend. README briefly explains customize/run/connect;
-  this file holds implementation guidance. Keep one root `.gitignore` and a
-  companion `AGENTS.md` beside every README.
-- Preserve uncommitted work. Do not commit, publish, or delete demo state without
-  authorization. Do not log credentials or commit environment files.
-- Template source is MIT; Commander framework and provider dependencies remain
-  AGPL-3.0-only. Preserve third-party license notices and the README distinction
-  between the template license and dependency requirements for combined builds.
-- The module imports Commander framework and providers only. Do not import
-  Commander apps, add a controller inside the agent, or depend on a sibling
-  checkout in published `go.mod`.
-- Commander → Controller → Agent: actions propose next work; the controller
-  selects who executes it. The `missions` Compose tool imports
-  `missions/hacker-news.json` through the API using the published Admin CLI.
-  Commander v0.3.0 has no controller `--with-missions` flag. Import preserves
-  existing mission names; use Admin's explicit update command to replace a saved
-  definition. Pass a generated API password over stdin without printing or saving it.
-  Mission `objectives` is a required nonempty array of nonblank strings. Keep
-  goals or instruction groups in ordered entries; all apply. Admin lists them
-  in the same style as Agent Responsibilities. Steps keep a singular `objective`.
-  `starting_actions` guides the first assignment; creating an operation alone
-  does not queue that task. Valid proposals execute automatically unless a
-  matching mission rule requires a model decision.
-- Agents upload artifact bytes; the controller persists accepted metadata.
-  Broker acknowledgements are separate from result acceptance. Do not claim
-  exactly-once execution.
+## Boundaries
 
-## Customize the template
+- Preserve uncommitted work. Do not commit, publish or delete demo state without
+  authorization. Never log credentials or commit environment files.
+- Template source is MIT; Commander framework/provider dependencies remain
+  AGPL-3.0-only. Preserve notices and the README distinction for combined builds.
+- Import Commander framework and providers only. Do not import Commander apps,
+  embed a controller or publish sibling-checkout replacements in `go.mod`.
+- Commander → Controller → Agent: actions propose work; the controller selects
+  executors and accepts results. Agents upload artifact bytes; the controller
+  persists accepted metadata. Broker acknowledgement is separate from acceptance;
+  never claim exactly-once execution.
 
-When building a new agent from this repository:
+## Find implementation guidance
 
-1. Set the module path in `go.mod` and update this module's imports.
-2. Set `AgentType` in `agent.go` and default responsibilities in `description.go`
-   to describe the agent's capabilities.
-3. Implement actions in `actions/` with typed JSON schemas and input validation.
-   Register a fresh constructor for each action once in `agent.go` and add its
-   name/description to `ActionDescriptions` in `description.go`. Keep action
-   names unique across the deployment and update follow-up proposals when renaming.
-4. Align the demo mission's required/starting actions and schemas with the new
-   capabilities. Update public action tests and the API integration scenario.
-5. Keep README short: purpose, extension points, local UI workflow and connection
-   settings. Keep implementation and test-stack details in this file.
+| Area | Guide |
+| --- | --- |
+| Typed actions, proposals and artifact output | [actions/AGENTS.md](actions/AGENTS.md) |
+| Support packages, HTTP clients and checkpoints | [internal/AGENTS.md](internal/AGENTS.md) |
+| Instance IDs, flags, providers and shutdown | [cli/AGENTS.md](cli/AGENTS.md) |
+| Image build and runtime settings | [docker/AGENTS.md](docker/AGENTS.md) |
+| Mission definitions and policy examples | [missions/AGENTS.md](missions/AGENTS.md) |
+| Public tests and dedicated-stack validation | [tests/AGENTS.md](tests/AGENTS.md) |
+| Release workflows, manifest exporter and CI | [.github/AGENTS.md](.github/AGENTS.md) |
 
-## Entry points
+## Customize and keep contracts aligned
 
-- `agent.go` defines the stable agent type and creates a fresh catalog. Action
-  executors hold discovery state: do not share instances between agents. Keep an
-  explicitly empty action catalog empty when callers supply one.
-- `.github/scripts/release.go` derives package names from the repository owner
-  and `AgentType`: `commander-<AgentType>`. Keep `AgentType` declared directly in
-  `agent.go` as a lowercase Docker-compatible string literal. The release tool
-  calls `framework/agent/manifest.Render` with the version, checksums of all six
-  native binaries and the pushed Docker image digest. The framework owns YAML
-  rendering and validation; no local template or `--template` flag is used.
-  Retain the comment-only `agent.yaml.tmpl` marker for compatibility with the
-  released Commander v0.2.0 builder, which requires that file during package checks.
-  Never hand-maintain checksums or use a moving image tag in the manifest. It
-  includes delivery assets and static responsibilities/action descriptions, never
-  host commands, privileges, networks or secrets.
-- `description.go` exports pure `Responsibilities()` and `ActionDescriptions()`
-  functions returning fresh slices. Runtime defaults and release manifests share
-  these values; each registered action uses its corresponding description constant
-  in `actions/`. Keep descriptions in sync with registration. Metadata functions
-  must not read environment variables, construct agents/providers, run discovery,
-  or perform I/O. Descriptions advertise capabilities, never current readiness.
-- Manifest generation imports the module path read from `go.mod` through a small
-  temporary Go exporter. It collects only static names/descriptions with bounded
-  output and an environment excluding release/model tokens. Keep the four-field
-  `metadata` command stable; only `manifest` reads the exported descriptions.
-- The five `actions/*_hn_*.go` examples form a reading-list workflow: choose topics,
-  fetch, filter, rank and write. `choose-hn-topics` demonstrates `action.Question`
-  with a stable key and validated comma-separated title keywords. Empty topics
-  mean all stories. `fetch-hn-stories` reads at most 20 items from the official
-  public API with bounded HTTP requests and progress logs. HN needs no credentials;
-  do not invent an authentication requirement for this workflow.
-- `internal/hn/` owns HTTP and HN response mapping. Skip null, dead, deleted and
-  non-story items; never fetch linked articles or comment trees. Title filtering
-  matches whole words or phrases without regard to case. Ranking selects five
-  stories by descending score and comment count, with deterministic ties.
-- `write-hn-digest` implements `action.Executor` with `Base` for `digest.md` and
-  `stories.json`. Escape untrusted Markdown text and links. Empty results produce
-  a valid digest, not an error. Supply bytes to the runtime; do not write artifact
-  paths directly. Keep shared story types and validation in `actions/hn.go`.
-- Keep `actions/` focused on registered action implementations, their input/output
-  types and readiness. Put substantial subprocess, Git, archive and filesystem
-  support in `internal/<purpose>/` packages grouped by responsibility. Tiny helpers
-  used by one action may stay beside that action when clearer. Keep tests and
-  fixtures in `tests/`; do not export support code solely to test it.
-- `cli/cli.go` selects the instance ID and owns host lifetime. Shutdown
-  cancels serving and closes dependencies. `cmd/main.go` only translates errors
-  into a process exit status.
-- `--agent-id-suffix` overrides `COMMANDER_AGENT_ID_SUFFIX`, including an
-  explicitly empty flag. Nonempty values accept exactly eight lowercase hex
-  characters; unset/empty generates a fresh ID. Compose `AgentConfig.ID` from
-  the fixed `AgentType` and this suffix with `id.AgentIDFromSuffix` before
-  opening providers. Never accept an externally supplied type prefix.
-  Keep the ID out of `PublicConfig`.
-  The spawner must save the full ID before launch and reconcile retries against its
-  owned instance; new or replacement launches get fresh IDs. Never start two
-  instances with the same ID. This setting alone provides neither duplicate
-  prevention nor authentication. Registration alone
-  does not guarantee that its actions are ready.
-- `cli/config.go` owns flags/environment; `cli/factory.go` selects concrete FS,
-  RabbitMQ and S3 providers. Reject unsupported schemes. Agents need a bus and
-  artifact file store, never a database.
-- `compose.yaml` is an isolated FS demonstration with one controller. All state
-  volumes belong to UID 1000. API and MCP run at PID 1 so their credential lookup
-  can read generated secrets from the live environment. Bind MCP/API/Admin ports
-  4283/4284/4285 to loopback. The demo fixes API `ENV` to `development`;
-  `.github/composes/compose.test.yaml` enables test-only API cleanup in a dedicated
-  stack. Keep fixtures and test-only services in that override, not the demo.
-- Playground uses the published `ghcr.io/defos-ai/commander-playground` image,
-  using the same `COMMANDER_VERSION` as the other hosts (default `v0.3.0`). Keep
-  Commander app dependencies out of the agent module. It is an optional
-  interactive Compose profile connecting to the demo MCP. Never launch it with
-  `--all-in-one`, which would start separate hosts and ignore this demo's mission
-  and agent.
-- `mcp-credentials` generates a shared token in a dedicated Docker volume; MCP
-  and Playground mount it read-only and export it before exec. This Compose
-  bootstrap file is the only credential-file exception. Preserve configured
-  `MCP_TOKEN` and client `COMMANDER_MCP_TOKEN` overrides, reuse generated tokens
-  across restarts, and never log tokens. Do not mount the Docker socket or expose
-  an unauthenticated credential endpoint.
-- Commander images currently target linux/amd64; Compose requests that
-  platform explicitly so ARM hosts can use Docker emulation. The template agent
-  builds for the Docker builder's platform; its release image supports both
-  linux/amd64 and linux/arm64.
+1. Change the module path and local imports, then set `AgentType` directly in
+   `agent.go` as a lowercase Docker-compatible string literal.
+2. Update `Responsibilities()` and `ActionDescriptions()` in `description.go`.
+   Both return fresh slices and pure static metadata: no environment reads,
+   provider construction, discovery or I/O. Advertise capabilities, not readiness.
+3. Implement typed, validated actions in `actions/`. Register one fresh constructor
+   per action in `agent.go`; executors hold discovery state and must not be shared
+   between agents. Preserve an explicitly empty catalog supplied by a caller.
+4. Replace, rename or remove the example actions, HN client, mission and fixtures
+   to suit the new agent. Keep deployment-wide action names unique. Reuse action
+   description constants in static metadata; update registration, proposals,
+   mission lists/schemas, public action tests and API integration together.
+5. Keep substantial subprocess, Git, archive, filesystem and HTTP support under
+   `internal/<purpose>/`. Small single-action helpers may stay beside their action.
+   Keep tests/fixtures in `tests/`; never export helpers solely for tests.
 
-## Release workflows
+The bundled HN reading-list workflow demonstrates framework capabilities.
+Replace it freely when creating an agent for a different purpose.
 
-- `make-release.yml` accepts a stable `vMAJOR.MINOR.PATCH` on the default branch.
-  It calls `test.yml` (unit → integration), then `build-binaries.yml` (native
-  tests/build/help on all six platforms), then `push.yml`. Keep build/push
-  workflows reusable-only and checkout the triggering SHA in every job.
-  Keep optional `expected_commit` and `request_id` inputs for builder dispatch.
-  The first `prepare` step rejects a nonempty expected commit that differs from
-  `GITHUB_SHA`, before checkout or dependent jobs. Every release job depends on
-  `prepare`; never add conditions or ignored errors that bypass its failure.
-  Include the request ID in `run-name` so an uncertain dispatch can be recovered
-  without starting another release. Manual version-only dispatch remains available.
-- Publishing uses `GITHUB_TOKEN`. The image is first pushed under a run-specific
-  build tag. The parent generates the digest-pinned manifest, attaches binaries,
-  manifest and LICENSE to a draft, then assigns the version image tag and
-  publishes the release. Only after complete publication, `push-stable.yml`
-  promotes Docker `stable` and GitHub `Latest`, rejecting backward version moves.
-- Serialize releases and keep test concurrency separate from release concurrency.
-  Existing Git tags must match the tested SHA. Before reserving a release, reject
-  an existing Docker version tag. Never overwrite published versions or assets:
-  retries reuse identical draft assets and reject differing bytes.
-  Retry failed jobs in the same run so binaries and image digest stay together.
+## Compose and mission runtime
 
-## Validation
+- `compose.yaml` is an isolated filesystem demo with one controller. State volumes
+  belong to UID 1000. Bind MCP/API/Admin ports 4283/4284/4285 to loopback; API uses
+  `ENV=development`. Test fixtures/services and cleanup belong only in the test
+  override and dedicated stack described in [tests/AGENTS.md](tests/AGENTS.md).
+- Keep API and MCP at PID 1 so credential commands can inspect their live
+  environment. Keep `BUS_URL`/`STORAGE_URL` out of Dockerfile defaults; deployments
+  supply environment variables or flags, and Compose owns local mounts/settings.
+- Import mission definitions through the API with the published Admin CLI
+  `missions` Compose tool; the bundled demo uses `missions/hacker-news.json`.
+  There is no controller `--with-missions` flag. Import preserves existing names;
+  use explicit Admin update to replace a definition.
+  Pass generated API passwords over stdin without printing or saving them.
+- Mission `objectives` is a nonempty ordered array of nonblank strings; all apply
+  and Admin shows each separately like Agent Responsibilities. Steps retain singular
+  `objective`. `starting_actions` guides assignment but creates no queued task.
+  Valid proposals continue automatically unless a continuation policy needs review.
+  Use typed `policies`, never legacy root `rules`, `completion` or placement.
+- Playground is an optional interactive profile using published
+  `ghcr.io/defos-ai/commander-playground` and the hosts' `COMMANDER_VERSION`.
+  Never use `--all-in-one`: it starts separate hosts and bypasses this demo.
+- `mcp-credentials` generates a shared token in its dedicated Docker volume; MCP
+  and Playground mount it read-only and export before exec. This bootstrap is the
+  only credential-file exception. Preserve `MCP_TOKEN`/`COMMANDER_MCP_TOKEN`
+  overrides, reuse tokens across restarts and never log them. Do not mount the
+  Docker socket or expose an unauthenticated credential endpoint.
+- Commander host images use explicit `linux/amd64` for ARM emulation. The agent
+  builds for the Docker builder's platform and releases for linux/amd64 and arm64.
 
-Keep tests and fixtures in `tests/`, using external test packages to exercise
-public action and host APIs. Use existing dependency injection for local
-fixtures. Do not place tests in `actions/` or `cli/` merely to access private
-helpers, or export implementation details and add runtime settings solely
-for tests.
+## Dependencies and checks
 
-Use Go 1.26.7 or newer. Changes to action behavior need public action tests;
-registration, proposals and artifacts are covered through the API integration
-test. Keep fixtures deterministic and avoid paid model calls.
+Use Go 1.26.7 or newer. Run the unit/race/vet checks and, when relevant, the
+**dedicated** Compose integration workflow in [tests/AGENTS.md](tests/AGENTS.md).
 
-```sh
-go test -race -count=1 -timeout=3m ./... ./.github/tests
-go vet ./... ./.github/scripts ./.github/tests
-```
+Published modules and demo images pin Commander `v0.4.0`; Go uses semantic versions,
+not Docker `stable`. Upgrade hosts and rebuilt agents together: v0.4.0 replaces
+nested execution `work` with `operation_id`/`task_id` and is incompatible with old
+agents. Before retained-state upgrades, back up state and its encryption key,
+review unmigrated legacy policies/execution records, and explicitly update saved
+missions. See the [upgrade notes](https://github.com/defos-ai/commander/releases/tag/v0.4.0).
 
-Integration tests require a **dedicated stack**: they call test-only global
-cleanup. Never point them at a development or shared API. Keep Docker lifecycle
-outside Go tests. From a terminal with ports 4283/4284/4285 free:
+For framework development, use an ignored `go.work` with this module and the
+checkout's `framework`, `providers/fs`, `providers/rabbitmq`, `providers/s3`, mapping
+versioned requirements with workspace replacements. Never publish that workspace
+or add local replacements to `go.mod`. Docker and CI use `GOWORK=off`.
 
-```sh
-export COMPOSE_PROJECT_NAME=commander-example-test API_USERNAME=commander
-export API_PASSWORD="$(openssl rand -hex 32)"
-docker compose -f compose.yaml -f .github/composes/compose.test.yaml up --build --wait --wait-timeout 120
-docker compose -f compose.yaml -f .github/composes/compose.test.yaml run --rm --no-deps -T missions
-docker compose -f compose.yaml -f .github/composes/compose.test.yaml run --rm --no-deps -T playground --help
-COMMANDER_API_URL=http://127.0.0.1:4284 go test -tags=integration -race -count=1 -timeout=3m -run '^TestAgentThroughAPI$' -v ./tests/...
-docker compose -f compose.yaml -f .github/composes/compose.test.yaml down --volumes --remove-orphans
-unset API_PASSWORD API_USERNAME COMPOSE_PROJECT_NAME
-```
-
-Always stop the test stack after a failure as well. Unit tests inject an HTTP client
-for saved HN responses and exercise the topic question and full action chain.
-The API integration test waits for all five actions, submits a saved story snapshot
-to `filter-hn-stories`, checks its rank/write proposals and both artifacts, then
-settles work and cleans operation state. This keeps ordinary tests deterministic
-and independent of internet access. CI gates the Docker job on unit checks and
-always tears down its volumes. The Playground help smoke check also exercises
-the shared-token wrapper; it needs no model key. For interactive MCP connection
-checks, select provider `other` with a fixed model name and local base URL, then
-exit after connection without sending chat. Keep failure logs free of secrets.
-
-## Develop alongside Commander
-
-The Go module and demo images pin the published Commander `v0.3.0` release;
-`COMMANDER_VERSION` overrides demo host images. Go dependencies use published
-semantic versions, not the Docker `stable` tag. For framework development, use an
-ignored `go.work` with this module plus the
-checkout's `framework`, `providers/fs`, `providers/rabbitmq` and `providers/s3`
-modules.
-Map their versioned requirements to local paths with workspace replacements.
-Do not commit that workspace or put local replacements in `go.mod`.
-
-Docker and CI use `GOWORK=off` with the published modules. Before updating module
-pins or image tags, verify module downloads, tests and the documented Compose run
-without a workspace, and retain the resulting module checksums. `go mod tidy`
-skips hidden `.github` directories; preserve the manifest renderer's dependencies
-with `go get github.com/defos-ai/commander/framework/agent/manifest@v0.3.0`
-after tidying, then test and vet `.github/scripts` and `.github/tests` explicitly.
+Before changing pins/images, verify published downloads, tests and the documented
+Compose run without a workspace; retain checksums. `go mod tidy` skips `.github`:
+restore renderer dependencies with
+`go get github.com/defos-ai/commander/framework/agent/manifest@v0.4.0`, then explicitly
+test/vet `.github/scripts` and `.github/tests`. Keep the comment-only
+`agent.yaml.tmpl` marker required by the v0.2.0 builder; manifest details live in
+[.github/AGENTS.md](.github/AGENTS.md).
