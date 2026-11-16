@@ -21,7 +21,6 @@
         "model_review": []
       },
       "completion": {"decision_by": "model"},
-      "session": [],
       "sharing": []
     },
     "input_schema": {

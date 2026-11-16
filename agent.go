@@ -16,6 +16,9 @@ func NewAgent(config agent.AgentConfig) (*agent.Agent, error) {
 	if config.Responsibilities == nil {
 		config.Responsibilities = Responsibilities()
 	}
+	if config.Dependencies == nil {
+		config.Dependencies = Dependencies()
+	}
 	if config.Actions == nil {
 		choose, err := actions.NewChooseHNTopics()
 		if err != nil {

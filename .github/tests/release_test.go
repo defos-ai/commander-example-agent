@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/defos-ai/commander/framework/agent/manifest"
+	agentmodel "github.com/defos-ai/commander/framework/domain/agents"
 )
 
 var releaseTool string
@@ -117,6 +118,9 @@ func TestReleaseManifest(t *testing.T) {
 	if value.Type != "custom-agent" || !reflect.DeepEqual(value.Responsibilities, []string{"Analyze custom text"}) ||
 		!reflect.DeepEqual(value.Actions, []manifest.Action{{Name: "analyze-custom", Description: "Count words in custom text."}}) {
 		t.Fatalf("manifest omitted static metadata: %+v", value)
+	}
+	if !reflect.DeepEqual(value.Dependencies, []agentmodel.Dependency{{Name: "custom-tool", Description: "Install custom-tool in the execution environment.", Version: "1.2.x"}}) {
+		t.Fatalf("manifest omitted declared software prerequisites: %+v", value.Dependencies)
 	}
 	if len(value.Native) != 6 {
 		t.Fatalf("manifest has %d native platforms; want 6", len(value.Native))
@@ -262,6 +266,11 @@ const descriptionFixtureSource = `package example
 import "os"
 
 type descriptionAction struct { Name, Description string }
+type descriptionDependency struct { Name, Description, Version string }
+
+func Dependencies() []descriptionDependency {
+    return []descriptionDependency{{Name: "custom-tool", Description: "Install custom-tool in the execution environment.", Version: "1.2.x"}}
+}
 
 func Responsibilities() []string {
     for _, name := range []string{"GH_TOKEN", "GITHUB_TOKEN", "CODEX_API_KEY", "SECRETS_ENCRYPTION_KEY"} {

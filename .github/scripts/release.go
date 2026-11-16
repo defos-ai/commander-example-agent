@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/defos-ai/commander/framework/agent/manifest"
+	agentmodel "github.com/defos-ai/commander/framework/domain/agents"
 )
 
 type metadata struct {
@@ -151,6 +152,7 @@ func writeManifest(data metadata, digest, assets string) error {
 		Version:          data.Version,
 		Responsibilities: description.Responsibilities,
 		Actions:          description.Actions,
+		Dependencies:     description.Dependencies,
 		Native:           native,
 		Docker:           &manifest.Docker{Image: data.Image + "@" + digest},
 	})
@@ -197,9 +199,10 @@ func hashAsset(path string) (string, error) {
 }
 
 type agentDescription struct {
-	Type             string            `json:"type"`
-	Responsibilities []string          `json:"responsibilities"`
-	Actions          []manifest.Action `json:"actions"`
+	Type             string                  `json:"type"`
+	Responsibilities []string                `json:"responsibilities"`
+	Actions          []manifest.Action       `json:"actions"`
+	Dependencies     []agentmodel.Dependency `json:"dependencies"`
 }
 
 // The import follows go.mod, so copying the template never leaves a hardcoded
@@ -216,10 +219,17 @@ func main() {
     for _, value := range descriptions {
         actions = append(actions, map[string]string{"name": value.Name, "description": value.Description})
     }
+    dependencies := make([]map[string]string, 0)
+    for _, value := range described.Dependencies() {
+        dependencies = append(dependencies, map[string]string{
+            "name": value.Name, "description": value.Description, "version": value.Version,
+        })
+    }
     if err := json.NewEncoder(os.Stdout).Encode(map[string]any{
         "type": string(described.AgentType),
         "responsibilities": described.Responsibilities(),
         "actions": actions,
+        "dependencies": dependencies,
     }); err != nil {
         os.Exit(1)
     }
@@ -288,7 +298,7 @@ func runGo(ctx context.Context, arguments ...string) ([]byte, error) {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		return nil, errors.New("cannot export the agent's static description; preserve Responsibilities and ActionDescriptions and verify its Go build")
+		return nil, errors.New("cannot export the agent's static description; preserve Responsibilities, ActionDescriptions and Dependencies and verify its Go build")
 	}
 	return output.Bytes(), nil
 }

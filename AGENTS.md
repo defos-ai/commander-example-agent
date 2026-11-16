@@ -34,9 +34,12 @@ beside every README.
 
 1. Change the module path and local imports, then set `AgentType` directly in
    `agent.go` as a lowercase Docker-compatible string literal.
-2. Update `Responsibilities()` and `ActionDescriptions()` in `description.go`.
-   Both return fresh slices and pure static metadata: no environment reads,
-   provider construction, discovery or I/O. Advertise capabilities, not readiness.
+2. Update `Responsibilities()`, `ActionDescriptions()` and `Dependencies()` in
+   `description.go`. All return fresh slices and pure static metadata: no
+   environment reads, provider construction, discovery or I/O. Advertise capabilities,
+   not readiness.
+   Dependency names match executable discovery requirements; descriptions and
+   optional versions are guidance, not installation or readiness checks. HN has none.
 3. Implement typed, validated actions in `actions/`. Register one fresh constructor
    per action in `agent.go`; executors hold discovery state and must not be shared
    between agents. Preserve an explicitly empty catalog supplied by a caller.
@@ -69,7 +72,9 @@ Replace it freely when creating an agent for a different purpose.
   and Admin shows each separately like Agent Responsibilities. Steps retain singular
   `objective`. `starting_actions` guides assignment but creates no queued task.
   Valid proposals continue automatically unless a continuation policy needs review.
-  Use typed `policies`, never legacy root `rules`, `completion` or placement.
+  Use typed `policies`, never legacy root `rules`, `completion`, placement or
+  `policies.session`. Session-aware actions declare `open`/`use` and acquire the
+  controller's binding through `action.OpenSession`/`action.UseSession`.
 - Playground is an optional interactive profile using published
   `ghcr.io/defos-ai/commander-playground` and the hosts' `COMMANDER_VERSION`.
   Never use `--all-in-one`: it starts separate hosts and bypasses this demo.
@@ -86,12 +91,13 @@ Replace it freely when creating an agent for a different purpose.
 Use Go 1.26.7 or newer. Run the unit/race/vet checks and, when relevant, the
 **dedicated** Compose integration workflow in [tests/AGENTS.md](tests/AGENTS.md).
 
-Published modules and demo images pin Commander `v0.4.0`; Go uses semantic versions,
-not Docker `stable`. Upgrade hosts and rebuilt agents together: v0.4.0 replaces
-nested execution `work` with `operation_id`/`task_id` and is incompatible with old
-agents. Before retained-state upgrades, back up state and its encryption key,
-review unmigrated legacy policies/execution records, and explicitly update saved
-missions. See the [upgrade notes](https://github.com/defos-ai/commander/releases/tag/v0.4.0).
+Published modules and demo images pin Commander `v0.6.0`; Go uses semantic versions,
+not Docker `stable`. Upgrade hosts and rebuilt agents together and reconnect MCP
+clients. When upgrading from v0.4.0, remove saved `policies.session` and replace
+`create` session contracts with `open`/`use`; action inputs contain no session IDs.
+Back up retained state and its original encryption key, review legacy records and
+explicitly update saved missions. See the [session migration](https://github.com/defos-ai/commander/releases/tag/v0.4.1)
+and [v0.6.0 notes](https://github.com/defos-ai/commander/releases/tag/v0.6.0).
 
 For framework development, use an ignored `go.work` with this module and the
 checkout's `framework`, `providers/fs`, `providers/rabbitmq`, `providers/s3`, mapping
@@ -101,7 +107,7 @@ or add local replacements to `go.mod`. Docker and CI use `GOWORK=off`.
 Before changing pins/images, verify published downloads, tests and the documented
 Compose run without a workspace; retain checksums. `go mod tidy` skips `.github`:
 restore renderer dependencies with
-`go get github.com/defos-ai/commander/framework/agent/manifest@v0.4.0`, then explicitly
+`go get github.com/defos-ai/commander/framework/agent/manifest@v0.6.0`, then explicitly
 test/vet `.github/scripts` and `.github/tests`. Keep the comment-only
 `agent.yaml.tmpl` marker required by the v0.2.0 builder; manifest details live in
 [.github/AGENTS.md](.github/AGENTS.md).

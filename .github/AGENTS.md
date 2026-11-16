@@ -12,14 +12,16 @@ Follow the root `AGENTS.md`. Keep reusable release jobs and their safeguards int
   checksums or moving image tag.
 - Retain the comment-only root `agent.yaml.tmpl` marker for the released v0.2.0
   builder's package checks. The generated manifest contains delivery assets and
-  static responsibilities/action descriptions, never host commands, privileges,
-  networks or secrets.
+  static responsibilities/action descriptions and optional dependency declarations,
+  never host commands, privileges, networks or secrets.
 - Read the module path from `go.mod` for the temporary Go metadata exporter.
-  Export only static names/descriptions with bounded output and an environment
-  excluding release/model tokens. Keep the four-field `metadata` command stable;
+  Export only static names/descriptions/dependencies with bounded output and an
+  environment excluding release/model tokens. Keep the four-field `metadata` command stable;
   only `manifest` reads exported descriptions.
+- Share `Dependencies()` with runtime registration. Keep it empty when no external
+  software is needed; declarations do not install prerequisites or establish readiness.
 - `go mod tidy` skips this hidden directory. Restore renderer dependencies with
-  `go get github.com/defos-ai/commander/framework/agent/manifest@v0.4.0` and explicitly
+  `go get github.com/defos-ai/commander/framework/agent/manifest@v0.6.0` and explicitly
   test/vet `.github/scripts` and `.github/tests` from the repository root.
 
 ## Release workflow

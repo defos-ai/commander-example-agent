@@ -170,7 +170,7 @@ func TestAgentLiveHNThroughAPI(t *testing.T) {
 			t.Fatal("live Markdown digest omitted a discussion link")
 		}
 	}
-	// Progress logs travel through the v0.4.0 execution protocol independently of
+	// Progress logs travel through the execution protocol independently of
 	// the accepted task result, so wait for their durable API view separately.
 	await(t, ctx, func() bool {
 		var logs struct {
