@@ -13,7 +13,15 @@
   question, complete action chain, bounds, cancellation and checkpoint replay/errors.
 - The starter `TestAgentThroughAPI` waits for its five HN actions, submits a saved
   snapshot to `filter-hn-stories`, checks rank/write proposals and both artifacts,
-  then settles work and cleans operation state. It needs neither live HN nor a model.
+  then explicitly finishes the final review and completes the operation. It needs
+  neither live HN nor a model.
+- Use `framework/testing/missiontest` for API scenarios: readiness, unique fixture
+  mission imports, assignments, saved questions, explicit continuation decisions,
+  completion and reports. `Download` verifies accepted file size and SHA-256.
+- Driver cleanup cancels only unfinished operations it created and waits for saved
+  task outcomes and matching live agent work. It preserves evidence and mission
+  definitions; never call global cleanup or delete another operation's state.
+  Inspect saved state before retrying any uncertain mutation.
 
 Run from the repository root with published modules and no workspace:
 
@@ -24,9 +32,10 @@ GOWORK=off go vet ./... ./.github/scripts ./.github/tests
 
 ## Dedicated Compose integration
 
-These tests call test-only global cleanup. Never point them at a development or
-shared API. Keep Docker lifecycle outside Go tests and always stop the stack after
-failure as well. From the repository root with ports 4283/4284/4285 free:
+Use a disposable dedicated stack, never a development or shared API. Keep Docker
+lifecycle outside Go tests and always stop the stack after failure as well; its
+volumes own the saved fixture missions and evidence. From the repository root with
+ports 4283/4284/4285 free:
 
 ```sh
 export COMPOSE_PROJECT_NAME=commander-example-test API_USERNAME=commander

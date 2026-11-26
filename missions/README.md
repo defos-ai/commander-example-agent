@@ -1,7 +1,7 @@
 # Mission policy examples
 
 Replace the starter mission with one matching your agent's actions. This populated
-example shows all Commander v0.6.0 policy groups. Replace the action names with
+example shows all Commander v0.9.0 policy groups. Replace the action names with
 capabilities you implement; the policies alone do not create tasks or resources.
 Comments are shown as JSONC here; importable mission files use plain JSON.
 
@@ -41,7 +41,7 @@ continuation decision even for successful results with valid follow-up proposals
 Sessions are action contracts, not mission policies: declare `session_mode: "open"`
 or `"use"` and use `action.OpenSession(ctx)` or `action.UseSession(ctx)`. Follow-ups
 inherit their direct parent's binding; keep session IDs out of action inputs.
-See [session usage](https://github.com/defos-ai/commander/blob/v0.6.0/docs/features/sessions.md#open-and-use).
+See [session usage](https://github.com/defos-ai/commander/blob/v0.9.0/docs/features/sessions.md#open-and-use).
 
 Start `watch-evidence` before its producers (before batch creation for grouped
 work). It consumes updates with `action.ReceiveSharedData(ctx)`. Sharing is live
@@ -51,3 +51,6 @@ The bundled `hacker-news.json` keeps automatic continuation, model completion an
 an empty sharing list for its sequential example. Copy only the policies
 your new workflow needs. Import preserves existing mission names; use Admin's
 explicit update command to replace a saved definition.
+
+Test customized workflows with the [mission test helper](https://github.com/defos-ai/commander/blob/v0.9.0/framework/testing/missiontest/README.md)
+against a dedicated stack, supplying decisions and answers explicitly.

@@ -3,10 +3,10 @@ module github.com/defos-ai/commander-example-agent
 go 1.26.7
 
 require (
-	github.com/defos-ai/commander/framework v0.6.0
-	github.com/defos-ai/commander/providers/fs v0.6.0
-	github.com/defos-ai/commander/providers/rabbitmq v0.6.0
-	github.com/defos-ai/commander/providers/s3 v0.6.0
+	github.com/defos-ai/commander/framework v0.9.0
+	github.com/defos-ai/commander/providers/fs v0.9.0
+	github.com/defos-ai/commander/providers/rabbitmq v0.9.0
+	github.com/defos-ai/commander/providers/s3 v0.9.0
 )
 
 require (

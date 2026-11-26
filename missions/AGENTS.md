@@ -6,7 +6,7 @@
   examples from the defaults in importable missions.
 - Replace or remove the starter mission for a new agent. Update the Compose
   import configuration, public tests and documentation to use the new definition.
-- Use Commander v0.6.0 typed `policies`: `continuation`, `completion` and `sharing`.
+- Use Commander v0.9.0 typed `policies`: `continuation`, `completion` and `sharing`.
   Do not add legacy root `rules`, `completion`, placement or `policies.session` fields.
 - Keep `objectives` a nonempty ordered array of nonblank strings; every entry
   applies. Steps retain their singular `objective` field.
@@ -22,5 +22,6 @@
 - Validate definitions through the published Admin CLI and the dedicated Compose
   workflow documented at the root. Import preserves existing mission names;
   use Admin's explicit update command when replacing a saved definition.
-- Keep public integration tests and fixtures in `tests/`. Run test-only cleanup
-  only against a disposable dedicated stack, and stop that stack after failures.
+- Keep public integration tests and fixtures in `tests/`. Exercise workflows with
+  `framework/testing/missiontest`; cleanup cancels only the driver's operations.
+  Use a disposable dedicated stack and stop it after failures as well.

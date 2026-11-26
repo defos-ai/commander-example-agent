@@ -21,7 +21,7 @@ Follow the root `AGENTS.md`. Keep reusable release jobs and their safeguards int
 - Share `Dependencies()` with runtime registration. Keep it empty when no external
   software is needed; declarations do not install prerequisites or establish readiness.
 - `go mod tidy` skips this hidden directory. Restore renderer dependencies with
-  `go get github.com/defos-ai/commander/framework/agent/manifest@v0.6.0` and explicitly
+  `go get github.com/defos-ai/commander/framework/agent/manifest@v0.9.0` and explicitly
   test/vet `.github/scripts` and `.github/tests` from the repository root.
 
 ## Release workflow
@@ -49,8 +49,9 @@ Follow the root `AGENTS.md`. Keep reusable release jobs and their safeguards int
 ## Test-stack boundary
 
 - CI unit checks gate Docker integration. Keep fixtures and test-only services in
-  `composes/compose.test.yaml`, not the demo Compose file. API `ENV=tests` permits
-  global cleanup only in the dedicated stack.
+  `composes/compose.test.yaml`, not the demo Compose file. Use a dedicated stack;
+  `framework/testing/missiontest` cancels only operations created by its driver and
+  waits for saved task outcomes and matching agent work. Do not use global cleanup.
 - Always tear down test containers and volumes, including on failure; keep
   failure logs free of secrets. The exact local workflow is in
   [../tests/AGENTS.md](../tests/AGENTS.md).

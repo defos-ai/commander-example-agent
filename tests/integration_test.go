@@ -4,13 +4,8 @@ package exampleagent_test
 
 import (
 	"bytes"
-	"context"
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"reflect"
@@ -19,84 +14,27 @@ import (
 	"time"
 
 	"github.com/defos-ai/commander-example-agent/actions"
+	"github.com/defos-ai/commander/framework/domain/missions"
+	"github.com/defos-ai/commander/framework/domain/operations"
+	"github.com/defos-ai/commander/framework/host"
+	"github.com/defos-ai/commander/framework/id"
+	"github.com/defos-ai/commander/framework/testing/missiontest"
 )
 
-// Run only against a disposable Compose project with ENV=tests: cleanup removes
-// all public operation data in that project. Docker lifecycle belongs to CI/setup.
+// Docker lifecycle belongs to setup/CI. The driver cleans up only its own work
+// and preserves saved evidence; it never clears another operation's state.
 func TestAgentThroughAPI(t *testing.T) {
-	a := connectAPI(t)
-	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
-	defer cancel()
-	a.request(t, ctx, http.MethodPost, "/api/v1/testing/cleanup", nil, http.StatusNoContent, nil)
-	await(t, ctx, func() bool {
-		var agents agentList
-		a.request(t, ctx, http.MethodGet, "/api/v1/agents", nil, http.StatusOK, &agents)
-		for _, agent := range agents.Items {
-			if agent.Type != "example-agent" || agent.Status != "ready" || agent.Stale {
-				continue
-			}
-			ready := map[string]bool{}
-			for _, action := range agent.Actions {
-				ready[action.Name] = action.Status == "ready"
-			}
-			if ready["choose-hn-topics"] && ready["fetch-hn-stories"] && ready["filter-hn-stories"] && ready["rank-hn-stories"] && ready["write-hn-digest"] {
-				return true
-			}
-		}
-		return false
-	})
-
-	// Choose the ID before sending so cleanup can find work even if the response
-	// is lost after the controller accepts the operation.
-	idBytes := make([]byte, 16)
-	if _, err := rand.Read(idBytes); err != nil {
-		t.Fatal(err)
-	}
-	idBytes[6], idBytes[8] = idBytes[6]&0x0f|0x40, idBytes[8]&0x3f|0x80
-	id := fmt.Sprintf("%x-%x-%x-%x-%x", idBytes[:4], idBytes[4:6], idBytes[6:8], idBytes[8:10], idBytes[10:])
-	base := "/api/v1/operations/" + id
-	t.Cleanup(func() {
-		if err := a.cleanup(id); err != nil {
-			t.Errorf("clean up example operation: %v", err)
-		}
-	})
-	// Start with a saved, already-fetched snapshot so this test exercises real
-	// controller proposals and artifacts without depending on live HN or a model.
-	// Public action tests cover the question and bounded HTTP fetch separately.
+	driver, mission := connectHNMission(t)
+	// Use a saved snapshot so controller proposals and artifact downloads stay
+	// independent of live HN and models. Unit tests cover the question/HTTP stages.
 	fixture, err := os.ReadFile("fixtures/hn-stories.json")
-	if err != nil {
-		t.Fatal(err)
-	}
+	mustHN(t, err)
 	var input actions.HNStoryBatch
-	if err := json.Unmarshal(fixture, &input); err != nil {
-		t.Fatal(err)
-	}
-	var operation operationResponse
-	a.request(t, ctx, http.MethodPost, "/api/v1/operations", map[string]any{
-		"operation_id": id, "mission_name": "hacker-news-digest", "input": map[string]any{"feed": "top", "limit": 10},
-	}, http.StatusCreated, &operation)
-	var root taskResponse
-	a.request(t, ctx, http.MethodPost, base+"/tasks", map[string]any{
-		"action_name": "filter-hn-stories", "input": input,
-	}, http.StatusCreated, &root)
-	await(t, ctx, func() bool {
-		a.request(t, ctx, http.MethodGet, base, nil, http.StatusOK, &operation)
-		for _, task := range operation.Tasks {
-			if task.Status == "failed" || task.Status == "cancelled" {
-				t.Fatalf("%s task %s: %s", task.ActionName, task.Status, task.Error)
-			}
-		}
-		return len(operation.Tasks) == 3 && operation.Tasks[0].Status == "succeeded" && operation.Tasks[1].Status == "succeeded" && operation.Tasks[2].Status == "succeeded"
-	})
-	filtered, ranked, digest := operation.Tasks[0], operation.Tasks[1], operation.Tasks[2]
-	if filtered.ID != root.ID || filtered.ActionName != "filter-hn-stories" || ranked.ActionName != "rank-hn-stories" || ranked.ParentTaskID != root.ID || digest.ActionName != "write-hn-digest" || digest.ParentTaskID != ranked.ID {
-		t.Fatalf("controller did not preserve the proposed action chain: %+v", operation.Tasks)
-	}
-	for _, task := range operation.Tasks {
-		if !strings.HasPrefix(task.AgentID, "example-agent-") {
-			t.Fatalf("task was not assigned to an example agent: %+v", task)
-		}
-	}
+	mustHN(t, json.Unmarshal(fixture, &input))
+	op := driver.Start(mission, map[string]any{"feed": "top", "limit": 10})
+	root := driver.Assign(op.ID, missiontest.Assignment{ActionName: actions.FilterHNStoriesName, Input: input})
+	tasks := waitForHNChain(t, driver, op.ID, root.ID,
+		actions.FilterHNStoriesName, actions.RankHNStoriesName, actions.WriteHNDigestName)
 	want := actions.HNStoryBatch{Feed: input.Feed, Topics: input.Topics, Stories: []actions.HNStory{}}
 	for _, storyID := range []int{105, 108, 104, 103, 102} {
 		for _, story := range input.Stories {
@@ -105,25 +43,16 @@ func TestAgentThroughAPI(t *testing.T) {
 			}
 		}
 	}
-	var rankedOutput actions.HNStoryBatch
-	if ranked.Result == nil || json.Unmarshal(ranked.Result.Output, &rankedOutput) != nil || !reflect.DeepEqual(rankedOutput, want) {
+	var ranked actions.HNStoryBatch
+	mustHN(t, json.Unmarshal(tasks[actions.RankHNStoriesName].Result.Output, &ranked))
+	if !reflect.DeepEqual(ranked, want) {
 		t.Fatal("ranking did not keep the expected five matching stories in order")
 	}
-	if digest.Result == nil || len(digest.Result.Artifacts) != 1 || len(digest.Result.Artifacts[0].Files) != 2 {
-		t.Fatalf("write-hn-digest produced no two-file downloadable artifact: %+v", digest.Result)
-	}
-	files := map[string][]byte{}
-	artifact := digest.Result.Artifacts[0]
-	for _, file := range artifact.Files {
-		content := a.request(t, ctx, http.MethodGet, "/api/v1/artifacts/"+artifact.ID+"/files/"+file.ID, nil, http.StatusOK, nil)
-		hash := sha256.Sum256(content)
-		if file.SHA256 != hex.EncodeToString(hash[:]) {
-			t.Fatalf("downloaded %s differs from its artifact descriptor", file.Name)
-		}
-		files[file.Name] = content
-	}
+	digest := tasks[actions.WriteHNDigestName]
+	files := downloadHNDigest(t, driver, digest)
 	var downloaded actions.HNStoryBatch
-	if json.Unmarshal(files["stories.json"], &downloaded) != nil || !reflect.DeepEqual(downloaded, want) {
+	mustHN(t, json.Unmarshal(files["stories.json"], &downloaded))
+	if !reflect.DeepEqual(downloaded, want) {
 		t.Fatal("downloaded JSON digest differs from the ranked stories")
 	}
 	markdown := string(files["digest.md"])
@@ -138,190 +67,102 @@ func TestAgentThroughAPI(t *testing.T) {
 		}
 		last = position
 	}
-	var output struct {
-		FileNames []string `json:"file_names"`
+	completeHN(t, driver, op.ID, digest.ID, "Selected five Hacker News stories and saved digest.md and stories.json.")
+}
+
+func hnMissionConfig(t *testing.T) missiontest.Config {
+	t.Helper()
+	url := os.Getenv("COMMANDER_API_URL")
+	if url == "" {
+		url = "http://127.0.0.1:4284"
 	}
-	if json.Unmarshal(digest.Result.Output, &output) != nil || !reflect.DeepEqual(output.FileNames, []string{"digest.md", "stories.json"}) {
+	client := &http.Client{
+		Timeout: 10 * time.Second, Transport: &http.Transport{Proxy: nil},
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+	t.Cleanup(client.CloseIdleConnections)
+	return missiontest.Config{
+		URL: url, HTTPClient: client, Timeout: 90 * time.Second,
+		Credentials: host.BasicCredentials{Username: os.Getenv("API_USERNAME"), Password: os.Getenv("API_PASSWORD")},
+	}
+}
+
+func connectHNMission(t *testing.T) (*missiontest.Driver, string) {
+	t.Helper()
+	driver := missiontest.Connect(t, hnMissionConfig(t))
+	raw, err := os.ReadFile("../missions/hacker-news.json")
+	mustHN(t, err)
+	var definitions []json.RawMessage
+	mustHN(t, json.Unmarshal(raw, &definitions))
+	if len(definitions) != 1 {
+		t.Fatal("expected one starter mission")
+	}
+	definition, err := missions.LoadMission(definitions[0])
+	mustHN(t, err)
+	// Use an isolated fixture name so an existing imported demo is never replaced.
+	definition.Name += "-test-" + id.New()
+	driver.ImportMission(definition)
+	driver.WaitForActions(definition.RequiredActions...)
+	return driver, definition.Name
+}
+
+func waitForHNChain(t *testing.T, driver *missiontest.Driver, operationID, rootID string, names ...string) map[string]operations.Task {
+	t.Helper()
+	op := driver.WaitFor(operationID, func(op operations.Operation) bool {
+		for _, task := range op.Tasks {
+			if task.Status == operations.TaskFailed || task.Status == operations.TaskCancelled || task.Status == operations.TaskInterrupted {
+				t.Fatalf("%s task %s", task.ActionName, task.Status)
+			}
+			if task.Status != operations.TaskSucceeded {
+				return false
+			}
+		}
+		return len(op.Tasks) == len(names)
+	})
+	tasks := make(map[string]operations.Task, len(op.Tasks))
+	for _, task := range op.Tasks {
+		tasks[task.ActionName] = task
+	}
+	parentID := ""
+	for _, name := range names {
+		task, ok := tasks[name]
+		if !ok || task.ParentTaskID != parentID || !strings.HasPrefix(task.AgentID, "example-agent-") || task.Result == nil {
+			t.Fatalf("controller lost the proposed action chain at %s", name)
+		}
+		parentID = task.ID
+	}
+	if tasks[names[0]].ID != rootID {
+		t.Fatal("action chain did not start from the assigned root task")
+	}
+	return tasks
+}
+
+func downloadHNDigest(t *testing.T, driver *missiontest.Driver, task operations.Task) map[string][]byte {
+	t.Helper()
+	if task.Result == nil || len(task.Result.Artifacts) != 1 || len(task.Result.Artifacts[0].Files) != 2 {
+		t.Fatal("digest did not produce a two-file downloadable artifact")
+	}
+	var output actions.WriteHNDigestOutput
+	mustHN(t, json.Unmarshal(task.Result.Output, &output))
+	if !reflect.DeepEqual(output.FileNames, []string{"digest.md", "stories.json"}) {
 		t.Fatal("digest metadata does not name both downloadable files")
 	}
-
-	// The client reviews results and completes the operation; agents never do so.
-	a.request(t, ctx, http.MethodPost, base+"/complete", map[string]any{
-		"output": map[string]any{"summary": "Selected five Hacker News stories and saved digest.md and stories.json."},
-	}, http.StatusOK, &operation)
-	if operation.Status != "completed" || operation.ReportID == "" {
-		t.Fatalf("operation has no completed report: %+v", operation)
+	artifact := task.Result.Artifacts[0]
+	files := map[string][]byte{}
+	for _, file := range artifact.Files {
+		// Download verifies the accepted size and SHA-256 before returning bytes.
+		files[file.Name] = driver.Download(artifact.ID, file)
 	}
-	a.request(t, ctx, http.MethodGet, base+"/report", nil, http.StatusOK, nil)
+	return files
 }
 
-// Keep the example independent of Commander application modules. These small
-// response types describe only the public API fields the scenario needs.
-type operationResponse struct {
-	Status   string         `json:"status"`
-	ReportID string         `json:"report_id"`
-	Tasks    []taskResponse `json:"tasks"`
-}
-
-type taskResponse struct {
-	ID           string `json:"id"`
-	ActionName   string `json:"action_name"`
-	AgentID      string `json:"agent_id"`
-	ParentTaskID string `json:"parent_task_id"`
-	Status       string `json:"status"`
-	Error        string `json:"error"`
-	Result       *struct {
-		Output    json.RawMessage `json:"output"`
-		Artifacts []struct {
-			ID    string `json:"id"`
-			Files []struct {
-				ID     string `json:"id"`
-				Name   string `json:"name"`
-				SHA256 string `json:"sha256"`
-			} `json:"files"`
-		} `json:"artifacts"`
-	} `json:"result"`
-}
-
-type agentList struct {
-	Items []struct {
-		Type    string `json:"type"`
-		Status  string `json:"status"`
-		Stale   bool   `json:"stale"`
-		Actions []struct {
-			Name   string `json:"name"`
-			Status string `json:"status"`
-		} `json:"actions"`
-		Work *struct {
-			OperationID string `json:"operation_id"`
-		} `json:"work"`
-	} `json:"items"`
-}
-
-type apiClient struct {
-	url, username, password string
-	client                  *http.Client
-}
-
-func connectAPI(t *testing.T) *apiClient {
+func completeHN(t *testing.T, driver *missiontest.Driver, operationID, lastTaskID, summary string) {
 	t.Helper()
-	a := &apiClient{
-		url: os.Getenv("COMMANDER_API_URL"), username: os.Getenv("API_USERNAME"), password: os.Getenv("API_PASSWORD"),
-		client: &http.Client{Timeout: 10 * time.Second, Transport: &http.Transport{Proxy: nil}},
-	}
-	if a.url == "" {
-		a.url = "http://127.0.0.1:4284"
-	}
-	a.url = strings.TrimRight(a.url, "/")
-	if a.username == "" || a.password == "" {
-		t.Fatal("integration tests require API_USERNAME and API_PASSWORD for a disposable stack started with ENV=tests")
-	}
-	t.Cleanup(a.client.CloseIdleConnections)
-	return a
-}
-
-func (a *apiClient) request(t *testing.T, ctx context.Context, method, path string, body any, status int, out any) []byte {
-	t.Helper()
-	data, got, err := a.send(ctx, method, path, body)
-	if err != nil || got != status {
-		t.Fatalf("%s %s: status=%d, want %d, error=%v body=%s", method, path, got, status, err, data)
-	}
-	if out != nil {
-		if err := json.Unmarshal(data, out); err != nil {
-			t.Fatalf("decode %s: %v", path, err)
-		}
-	}
-	return data
-}
-
-func (a *apiClient) send(ctx context.Context, method, path string, body any) ([]byte, int, error) {
-	var data []byte
-	if body != nil {
-		var err error
-		data, err = json.Marshal(body)
-		if err != nil {
-			return nil, 0, err
-		}
-	}
-	request, err := http.NewRequestWithContext(ctx, method, a.url+path, bytes.NewReader(data))
-	if err != nil {
-		return nil, 0, err
-	}
-	request.SetBasicAuth(a.username, a.password)
-	if body != nil {
-		request.Header.Set("Content-Type", "application/json")
-	}
-	response, err := a.client.Do(request)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer response.Body.Close()
-	data, err = io.ReadAll(io.LimitReader(response.Body, 2<<20))
-	return data, response.StatusCode, err
-}
-
-func await(t *testing.T, ctx context.Context, ready func() bool) {
-	t.Helper()
-	for !ready() {
-		if err := pause(ctx); err != nil {
-			t.Fatalf("example agent did not reach expected state: %v", err)
-		}
-	}
-}
-
-func pause(ctx context.Context) error {
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-time.After(100 * time.Millisecond):
-		return nil
-	}
-}
-
-func (a *apiClient) cleanup(id string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	base := "/api/v1/operations/" + id
-	_, status, err := a.send(ctx, http.MethodPost, base+"/cancel", nil)
-	if err != nil || (status != http.StatusOK && status != http.StatusConflict && status != http.StatusNotFound) {
-		return fmt.Errorf("cancel operation: status=%d error=%v", status, err)
-	}
-	for {
-		data, status, err := a.send(ctx, http.MethodGet, base, nil)
-		if err != nil {
-			return err
-		}
-		var operation operationResponse
-		if status != http.StatusNotFound && (status != http.StatusOK || json.Unmarshal(data, &operation) != nil) {
-			return fmt.Errorf("read operation: status=%d body=%s", status, data)
-		}
-		busy := status != http.StatusNotFound && operation.Status != "completed" && operation.Status != "cancelled" && operation.Status != "failed"
-		for _, task := range operation.Tasks {
-			busy = busy || task.Status == "queued" || task.Status == "running" || task.Status == "interrupted"
-		}
-		data, status, err = a.send(ctx, http.MethodGet, "/api/v1/agents", nil)
-		var agents agentList
-		if err != nil || status != http.StatusOK || json.Unmarshal(data, &agents) != nil {
-			return fmt.Errorf("read agents: status=%d error=%v", status, err)
-		}
-		for _, agent := range agents.Items {
-			busy = busy || agent.Work != nil && agent.Work.OperationID == id
-		}
-		if !busy {
-			data, status, err = a.send(ctx, http.MethodPost, "/api/v1/testing/cleanup", nil)
-			if err != nil || (status != http.StatusNoContent && status != http.StatusConflict) {
-				return fmt.Errorf("clear test state: status=%d error=%v body=%s", status, err, data)
-			}
-			if status == http.StatusNoContent {
-				_, status, err = a.send(ctx, http.MethodGet, base, nil)
-				if err != nil || status != http.StatusNotFound {
-					return fmt.Errorf("operation remained after cleanup: status=%d error=%v", status, err)
-				}
-				return nil
-			}
-		}
-		if err := pause(ctx); err != nil {
-			return fmt.Errorf("work did not settle for cleanup: %w", err)
-		}
+	// The scenario explicitly finishes the final review and completes the operation.
+	driver.Resolve(operationID, driver.WaitForContinuation(operationID, lastTaskID))
+	completed := driver.Complete(operationID, map[string]string{"summary": summary})
+	report := driver.Report(operationID)
+	if completed.Status != operations.Completed || completed.ReportID != report.ID || !bytes.Equal(completed.Output, report.Output) {
+		t.Fatal("completed operation did not retain its matching final report")
 	}
 }

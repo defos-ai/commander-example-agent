@@ -58,8 +58,9 @@ Replace it freely when creating an agent for a different purpose.
 
 - `compose.yaml` is an isolated filesystem demo with one controller. State volumes
   belong to UID 1000. Bind MCP/API/Admin ports 4283/4284/4285 to loopback; API uses
-  `ENV=development`. Test fixtures/services and cleanup belong only in the test
-  override and dedicated stack described in [tests/AGENTS.md](tests/AGENTS.md).
+  `ENV=development`. Keep test fixtures/services in the test override and use the
+  dedicated stack described in [tests/AGENTS.md](tests/AGENTS.md). Mission tests
+  cancel only operations created by their `missiontest` driver.
 - Keep API and MCP at PID 1 so credential commands can inspect their live
   environment. Keep `BUS_URL`/`STORAGE_URL` out of Dockerfile defaults; deployments
   supply environment variables or flags, and Compose owns local mounts/settings.
@@ -91,13 +92,13 @@ Replace it freely when creating an agent for a different purpose.
 Use Go 1.26.7 or newer. Run the unit/race/vet checks and, when relevant, the
 **dedicated** Compose integration workflow in [tests/AGENTS.md](tests/AGENTS.md).
 
-Published modules and demo images pin Commander `v0.6.0`; Go uses semantic versions,
+Published modules and demo images pin Commander `v0.9.0`; Go uses semantic versions,
 not Docker `stable`. Upgrade hosts and rebuilt agents together and reconnect MCP
-clients. When upgrading from v0.4.0, remove saved `policies.session` and replace
-`create` session contracts with `open`/`use`; action inputs contain no session IDs.
-Back up retained state and its original encryption key, review legacy records and
-explicitly update saved missions. See the [session migration](https://github.com/defos-ai/commander/releases/tag/v0.4.1)
-and [v0.6.0 notes](https://github.com/defos-ai/commander/releases/tag/v0.6.0).
+clients. Preserve retained state and its original encryption key; v0.9.0 requires
+no saved-format migration. Legacy v0.4.0 missions still need explicit removal of
+`policies.session` and `create` session contracts must use `open`/`use` instead.
+See the [session migration](https://github.com/defos-ai/commander/releases/tag/v0.4.1)
+and [v0.9.0 notes](https://github.com/defos-ai/commander/releases/tag/v0.9.0).
 
 For framework development, use an ignored `go.work` with this module and the
 checkout's `framework`, `providers/fs`, `providers/rabbitmq`, `providers/s3`, mapping
@@ -107,7 +108,7 @@ or add local replacements to `go.mod`. Docker and CI use `GOWORK=off`.
 Before changing pins/images, verify published downloads, tests and the documented
 Compose run without a workspace; retain checksums. `go mod tidy` skips `.github`:
 restore renderer dependencies with
-`go get github.com/defos-ai/commander/framework/agent/manifest@v0.6.0`, then explicitly
+`go get github.com/defos-ai/commander/framework/agent/manifest@v0.9.0`, then explicitly
 test/vet `.github/scripts` and `.github/tests`. Keep the comment-only
 `agent.yaml.tmpl` marker required by the v0.2.0 builder; manifest details live in
 [.github/AGENTS.md](.github/AGENTS.md).
